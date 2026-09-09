@@ -232,6 +232,46 @@ Keep the checkout clean before running `install.sh`; `idf.py` ignores
 uninitialized submodules differently across versions and a partially updated
 tree produces confusing compile errors.
 
+### Large submodule fixes
+
+`components/esp_wifi/lib` resolves to `espressif/esp32-wifi-lib`, a large
+prebuilt repository, and a full fetch of it commonly exceeds any reasonable
+wait limit. Do not retry the full fetch repeatedly on a short wait; fetch only
+the pinned commit instead:
+
+1. Read the exact commit `esp-idf` pins for that path:
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" ls-tree HEAD components/esp_wifi/lib
+# 160000 commit <sha>  components/esp_wifi/lib
+```
+
+2. Remove the partial directory and fetch that single commit shallowly:
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" rm -rf components/esp_wifi/lib
+mkdir -p "${AI_PASSPORT_IDF_ROOT}/components/esp_wifi/lib"
+cd "${AI_PASSPORT_IDF_ROOT}/components/esp_wifi/lib"
+git init
+git remote add origin https://github.com/espressif/esp32-wifi-lib.git
+git fetch --depth 1 origin <sha-from-ls-tree>
+git checkout FETCH_HEAD
+```
+
+3. Let `git submodule update --init` record the checkout, then verify:
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" submodule update --init components/esp_wifi/lib
+git -C "${AI_PASSPORT_IDF_ROOT}" status --short
+```
+
+Do not use `git submodule update --depth=1 <path>` for these pins: it fetches
+only the default-branch tip and fails with
+`Unable to find current revision in submodule path` when the pinned commit is
+not the tip. For any remaining path that stays dirty after the ordinary repair,
+run `git submodule deinit -f <path>` first, then `update --init` again. Always
+use the paths printed by the latest `git status`; do not copy example paths.
+
 ### Offline archives as a last resort
 
 If every source is unreachable after repeated attempts, the official Espressif

@@ -198,6 +198,44 @@ git -C "${AI_PASSPORT_IDF_ROOT}" status --short
 运行 `install.sh` 前保持 checkout 干净；各版本 `idf.py` 对未初始化子模块的
 处理不同，部分更新的目录树会产生难以定位的编译错误。
 
+### 大仓子模块修复
+
+`components/esp_wifi/lib` 对应 `espressif/esp32-wifi-lib`，是体积很大的
+预编译仓库，全量拉取通常超过任何合理等待上限。不要在短等待下反复重试全量
+拉取，改为只取钉死的那个 commit：
+
+1. 读取 `esp-idf` 为该路径钉死的 commit：
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" ls-tree HEAD components/esp_wifi/lib
+# 160000 commit <sha>  components/esp_wifi/lib
+```
+
+2. 删除部分目录，按该 commit 浅取：
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" rm -rf components/esp_wifi/lib
+mkdir -p "${AI_PASSPORT_IDF_ROOT}/components/esp_wifi/lib"
+cd "${AI_PASSPORT_IDF_ROOT}/components/esp_wifi/lib"
+git init
+git remote add origin https://github.com/espressif/esp32-wifi-lib.git
+git fetch --depth 1 origin <ls-tree-输出的-sha>
+git checkout FETCH_HEAD
+```
+
+3. 让 `git submodule update --init` 登记该 checkout，再核验：
+
+```bash
+git -C "${AI_PASSPORT_IDF_ROOT}" submodule update --init components/esp_wifi/lib
+git -C "${AI_PASSPORT_IDF_ROOT}" status --short
+```
+
+对这些钉死路径不要使用 `git submodule update --depth=1 <path>`：它只浅拉
+默认分支 tip，当钉死的 commit 不是 tip 时会报
+`Unable to find current revision in submodule path`。普通修复后仍然 dirty 的
+路径，先执行 `git submodule deinit -f <path>` 再 `update --init`。路径一律取
+本次 `git status` 打印的实际值，不要照抄示例路径。
+
 ### 离线压缩包兜底
 
 重复尝试后所有源都不可达时，乐鑫官方 release 归档是一次完整 checkout 快照
