@@ -31,6 +31,15 @@ static uint32_t s_next_sequence = 1;
 static uint32_t s_chunk_samples;
 static FILE *s_chunk_file;
 
+static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
+{
+    (void)user;
+    if (!inspiration_chunk_queue_enqueue(&s_chunks, sequence, bytes)) return false;
+    if (sequence >= s_next_sequence) s_next_sequence = sequence + 1;
+    inspiration_state_chunk_queued(&s_state);
+    return true;
+}
+
 static void state_fail(void)
 {
     portENTER_CRITICAL(&s_lock);
@@ -198,6 +207,7 @@ esp_err_t inspiration_recorder_init(void)
     if (!s_chunks_mutex) return ESP_ERR_NO_MEM;
     esp_err_t err = inspiration_storage_init();
     if (err != ESP_OK) return err;
+    inspiration_storage_for_each_chunk(recover_chunk, NULL);
     inspiration_upload_load_config();
     s_events = xQueueCreate(RECORDER_QUEUE_LENGTH, sizeof(recorder_event_t));
     if (!s_events) return ESP_ERR_NO_MEM;

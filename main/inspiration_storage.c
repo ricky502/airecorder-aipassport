@@ -1,6 +1,7 @@
 #include "inspiration_storage.h"
 
 #include <errno.h>
+#include <dirent.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -68,4 +69,26 @@ esp_err_t inspiration_storage_info(size_t *total_bytes, size_t *used_bytes)
 {
     if (!s_initialized) return ESP_ERR_INVALID_STATE;
     return esp_spiffs_info(INSPIRATION_VOICEFS_LABEL, total_bytes, used_bytes);
+}
+
+esp_err_t inspiration_storage_for_each_chunk(inspiration_storage_chunk_cb_t callback, void *user)
+{
+    if (!s_initialized || !callback) return ESP_ERR_INVALID_STATE;
+    DIR *dir = opendir(INSPIRATION_STORAGE_BASE_PATH);
+    if (!dir) return ESP_FAIL;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        uint32_t sequence = 0;
+        if (sscanf(entry->d_name, "%" SCNu32 ".adpcm", &sequence) != 1) continue;
+        char path[32];
+        if (chunk_path(path, sizeof(path), sequence) < 0) continue;
+        FILE *file = fopen(path, "rb");
+        if (!file) continue;
+        if (fseek(file, 0, SEEK_END) != 0) { fclose(file); continue; }
+        long bytes = ftell(file);
+        fclose(file);
+        if (bytes <= 0 || !callback(sequence, (uint32_t)bytes, user)) break;
+    }
+    closedir(dir);
+    return ESP_OK;
 }
