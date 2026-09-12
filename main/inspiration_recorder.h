@@ -8,5 +8,6 @@
 esp_err_t inspiration_recorder_init(void);
 void inspiration_recorder_toggle(void);
 void inspiration_recorder_stop(void);
+void inspiration_recorder_set_wifi_ready(bool ready);
 void inspiration_recorder_clear_stop_indicator(void);
 void inspiration_recorder_snapshot(inspiration_state_t *state_out, uint16_t *peak_out);

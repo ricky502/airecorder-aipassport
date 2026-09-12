@@ -4,6 +4,7 @@
 #include "bsp_battery.h"
 #include "inspiration_recorder.h"
 #include "inspiration_storage.h"
+#include "inspiration_wifi.h"
 #include "lvgl.h"
 
 #define INK 0x102A33
@@ -33,6 +34,7 @@ static void tick(lv_timer_t *timer)
     inspiration_state_t state;
     uint16_t peak;
     inspiration_recorder_snapshot(&state, &peak);
+    inspiration_recorder_set_wifi_ready(inspiration_wifi_ready());
     uint32_t color = MINT;
     const char *word = "";
     if (state.phase == INSPIRATION_RECORDING) { color = RED; word = "● REC"; }
@@ -56,7 +58,8 @@ static void tick(lv_timer_t *timer)
     char battery_text[8];
     if (battery < 0) snprintf(battery_text, sizeof(battery_text), "--%%");
     else snprintf(battery_text, sizeof(battery_text), "%d%%", battery);
-    lv_label_set_text_fmt(s_footer, "WIFI OFFLINE     CACHE %02u:%02u     BAT %s",
+    lv_label_set_text_fmt(s_footer, "WIFI %s     CACHE %02u:%02u     BAT %s",
+                          state.wifi_ready ? "READY" : "OFFLINE",
                           remaining / 60U, remaining % 60U, battery_text);
 }
 

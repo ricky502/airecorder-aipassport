@@ -4,6 +4,7 @@ idf_component_register(
          "inspiration_chunk_queue.c"
          "inspiration_recorder.c"
          "inspiration_ui.c"
+         "inspiration_wifi.c"
          "inspiration_storage.c"
          "inspiration_state.c"
          "ui_pixel.c"

@@ -164,6 +164,13 @@ void inspiration_recorder_stop(void)
     if (s_events) xQueueSend(s_events, &event, 0);
 }
 
+void inspiration_recorder_set_wifi_ready(bool ready)
+{
+    portENTER_CRITICAL(&s_lock);
+    s_state.wifi_ready = ready;
+    portEXIT_CRITICAL(&s_lock);
+}
+
 void inspiration_recorder_clear_stop_indicator(void)
 {
     portENTER_CRITICAL(&s_lock);

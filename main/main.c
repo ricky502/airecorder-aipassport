@@ -6,6 +6,7 @@
 #include "esp_log.h"
 #include "inspiration_recorder.h"
 #include "inspiration_ui.h"
+#include "inspiration_wifi.h"
 
 static const char *TAG = "inspiration";
 
@@ -32,6 +33,7 @@ void app_main(void)
         ESP_LOGE(TAG, "recorder initialization failed");
         return;
     }
+    inspiration_wifi_init(); // Credentials are retained; failure simply keeps offline recording available.
     if (bsp_lvgl_lock(1000)) {
         inspiration_ui_start();
         bsp_lvgl_unlock();
