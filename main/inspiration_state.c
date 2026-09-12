@@ -32,6 +32,16 @@ void inspiration_state_stop(inspiration_state_t *state)
     state->phase = INSPIRATION_FINALIZING;
 }
 
+void inspiration_state_chunk_queued(inspiration_state_t *state)
+{
+    state->pending_chunks++;
+}
+
+void inspiration_state_chunk_acknowledged(inspiration_state_t *state)
+{
+    if (state->pending_chunks) state->pending_chunks--;
+}
+
 void inspiration_state_upload_started(inspiration_state_t *state)
 {
     if (state->phase != INSPIRATION_FINALIZING) return;

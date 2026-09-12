@@ -24,6 +24,8 @@ typedef struct {
 void inspiration_state_init(inspiration_state_t *state);
 void inspiration_state_toggle_recording(inspiration_state_t *state);
 void inspiration_state_stop(inspiration_state_t *state);
+void inspiration_state_chunk_queued(inspiration_state_t *state);
+void inspiration_state_chunk_acknowledged(inspiration_state_t *state);
 void inspiration_state_upload_started(inspiration_state_t *state);
 void inspiration_state_upload_finished(inspiration_state_t *state, bool success);
 void inspiration_state_tick(inspiration_state_t *state, uint32_t elapsed_ms);
