@@ -1,4 +1,5 @@
-// Small, allocation-free IMA-ADPCM packet codec for 16 kHz mono recorder chunks.
+// Small, allocation-free IMA-ADPCM packet codec for mono recorder chunks.
+// The packet has no rate field; the session manifest carries the configured rate.
 #pragma once
 
 #include <stdbool.h>

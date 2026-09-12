@@ -161,7 +161,7 @@ class Handler(BaseHTTPRequestHandler):
                 "schema": 1,
                 "recording_id": session,
                 "device": "ai-passport",
-                "codec": "ima-adpcm-16khz-mono",
+                "codec": "ima-adpcm-8khz-mono",
                 "audio_directory": str(session_dir),
                 "chunks": chunks,
                 "received_at": int(time.time()),
