@@ -6,6 +6,7 @@
 #include "nvs_flash.h"
 
 static bool s_ready;
+static bool s_started;
 
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
@@ -39,8 +40,24 @@ esp_err_t inspiration_wifi_init(void)
     if (err != ESP_OK) return err;
     err = esp_wifi_set_storage(WIFI_STORAGE_FLASH);
     if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
-    if (err == ESP_OK) err = esp_wifi_start();
     return err;
+}
+
+esp_err_t inspiration_wifi_begin_upload_window(void)
+{
+    if (s_started) return ESP_OK;
+    esp_err_t err = esp_wifi_start();
+    if (err == ESP_OK) s_started = true;
+    return err;
+}
+
+void inspiration_wifi_end_upload_window(void)
+{
+    if (!s_started) return;
+    esp_wifi_disconnect();
+    esp_wifi_stop();
+    s_ready = false;
+    s_started = false;
 }
 
 bool inspiration_wifi_ready(void) { return s_ready; }

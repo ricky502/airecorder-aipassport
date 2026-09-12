@@ -74,6 +74,17 @@ static bool finalize_chunk(void)
     return true;
 }
 
+static void service_upload_window(void)
+{
+    if (!s_chunks.count || !inspiration_upload_configured()) return;
+    if (!inspiration_wifi_ready()) {
+        inspiration_wifi_begin_upload_window();
+        return;
+    }
+    inspiration_upload_next(&s_chunks);
+    if (!s_chunks.count) inspiration_wifi_end_upload_window();
+}
+
 static bool start_recording(void)
 {
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) != ESP_OK ||
@@ -118,8 +129,8 @@ static void recorder_task(void *unused)
     for (;;) {
         recorder_event_t event;
         if (!state_is_recording()) {
-            if (inspiration_wifi_ready()) inspiration_upload_next(&s_chunks);
-            if (xQueueReceive(s_events, &event, portMAX_DELAY) == pdTRUE) process_event(event);
+            service_upload_window();
+            if (xQueueReceive(s_events, &event, pdMS_TO_TICKS(200)) == pdTRUE) process_event(event);
             continue;
         }
         if (bsp_audio_read(pcm, sizeof(pcm)) != ESP_OK) { state_fail(); continue; }
@@ -139,7 +150,7 @@ static void recorder_task(void *unused)
         portEXIT_CRITICAL(&s_lock);
         if (s_chunk_samples >= INSPIRATION_CHUNK_SECONDS * INSPIRATION_SAMPLE_RATE_HZ) {
             if (!finalize_chunk() || open_chunk() != ESP_OK) state_fail();
-            else if (inspiration_wifi_ready()) inspiration_upload_next(&s_chunks);
+            else if (inspiration_upload_configured()) inspiration_wifi_begin_upload_window();
         }
     }
 }
