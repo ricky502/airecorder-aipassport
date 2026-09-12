@@ -32,6 +32,10 @@ run_static_checks() {
         tests/test_inspiration_state.c main/inspiration_state.c \
         -o "${test_dir}/test_inspiration_state"
     "${test_dir}/test_inspiration_state"
+    "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -Imain \
+        tests/test_inspiration_adpcm.c main/inspiration_adpcm.c \
+        -o "${test_dir}/test_inspiration_adpcm"
+    "${test_dir}/test_inspiration_adpcm"
     python3 tests/test_verify_firmware.py
     rm -rf "${test_dir}"
     echo "Host tests: PASS"
