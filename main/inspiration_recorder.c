@@ -16,6 +16,7 @@
 #define RECORDER_BLOCK_SAMPLES 320U
 #define RECORDER_PACKET_BYTES (INSPIRATION_ADPCM_HEADER_BYTES + RECORDER_BLOCK_SAMPLES / 2U)
 #define RECORDER_QUEUE_LENGTH 4U
+#define UPLOADER_TASK_STACK 4096U
 
 typedef enum { RECORDER_TOGGLE, RECORDER_STOP } recorder_event_t;
 
@@ -85,6 +86,17 @@ static void service_upload_window(void)
     if (!s_chunks.count) inspiration_wifi_end_upload_window();
 }
 
+// Network I/O may block for seconds.  It must never run from recorder_task,
+// where a 40 ms PCM block deadline protects against microphone dropouts.
+static void uploader_task(void *unused)
+{
+    (void)unused;
+    for (;;) {
+        service_upload_window();
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
+}
+
 static bool start_recording(void)
 {
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) != ESP_OK ||
@@ -129,7 +141,6 @@ static void recorder_task(void *unused)
     for (;;) {
         recorder_event_t event;
         if (!state_is_recording()) {
-            service_upload_window();
             if (xQueueReceive(s_events, &event, pdMS_TO_TICKS(200)) == pdTRUE) process_event(event);
             continue;
         }
@@ -164,7 +175,10 @@ esp_err_t inspiration_recorder_init(void)
     inspiration_upload_load_config();
     s_events = xQueueCreate(RECORDER_QUEUE_LENGTH, sizeof(recorder_event_t));
     if (!s_events) return ESP_ERR_NO_MEM;
-    return xTaskCreate(recorder_task, "inspiration_rec", 4096, NULL, 4, NULL) == pdPASS
+    if (xTaskCreate(recorder_task, "inspiration_rec", 4096, NULL, 4, NULL) != pdPASS) {
+        return ESP_ERR_NO_MEM;
+    }
+    return xTaskCreate(uploader_task, "inspiration_upload", UPLOADER_TASK_STACK, NULL, 3, NULL) == pdPASS
         ? ESP_OK : ESP_ERR_NO_MEM;
 }
 
