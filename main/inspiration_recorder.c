@@ -164,6 +164,13 @@ void inspiration_recorder_stop(void)
     if (s_events) xQueueSend(s_events, &event, 0);
 }
 
+void inspiration_recorder_clear_stop_indicator(void)
+{
+    portENTER_CRITICAL(&s_lock);
+    inspiration_state_clear_stop_indicator(&s_state);
+    portEXIT_CRITICAL(&s_lock);
+}
+
 void inspiration_recorder_snapshot(inspiration_state_t *state_out, uint16_t *peak_out)
 {
     portENTER_CRITICAL(&s_lock);
