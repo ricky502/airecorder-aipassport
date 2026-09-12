@@ -6,7 +6,7 @@
 
 This dependency-free local service receives recordings from both supported
 devices before any AI processing happens. It preserves audio when a later
-transcription, Feishu, or Obsidian step is unavailable.
+transcription or Feishu step is unavailable.
 
 ## Start
 

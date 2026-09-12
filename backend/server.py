@@ -3,7 +3,7 @@
 
 No API keys live here.  The service durably receives audio first, then sends a
 small JSON event to an optional agent webhook.  This keeps device transport
-separate from transcription, Feishu, and Obsidian policy.
+separate from transcription and Feishu policy.
 """
 
 from __future__ import annotations
