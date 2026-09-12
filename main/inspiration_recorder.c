@@ -5,6 +5,7 @@
 #include "bsp_audio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "inspiration_adpcm.h"
 #include "inspiration_chunk_queue.h"
@@ -21,6 +22,7 @@
 typedef enum { RECORDER_TOGGLE, RECORDER_STOP } recorder_event_t;
 
 static QueueHandle_t s_events;
+static SemaphoreHandle_t s_chunks_mutex;
 static inspiration_state_t s_state;
 static inspiration_chunk_queue_t s_chunks;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -67,7 +69,10 @@ static bool finalize_chunk(void)
     bool closed = fclose(s_chunk_file) == 0;
     s_chunk_file = NULL;
     if (!closed || bytes <= 0 ||
-        !inspiration_chunk_queue_enqueue(&s_chunks, s_next_sequence, (uint32_t)bytes)) return false;
+        xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return false;
+    bool queued = inspiration_chunk_queue_enqueue(&s_chunks, s_next_sequence, (uint32_t)bytes);
+    xSemaphoreGive(s_chunks_mutex);
+    if (!queued) return false;
     s_next_sequence++;
     portENTER_CRITICAL(&s_lock);
     inspiration_state_chunk_queued(&s_state);
@@ -77,13 +82,32 @@ static bool finalize_chunk(void)
 
 static void service_upload_window(void)
 {
-    if (!s_chunks.count || !inspiration_upload_configured()) return;
+    if (!inspiration_upload_configured()) return;
+    inspiration_chunk_t chunk;
+    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    inspiration_chunk_t *claimed = inspiration_chunk_queue_next_ready(&s_chunks);
+    if (claimed) chunk = *claimed;
+    xSemaphoreGive(s_chunks_mutex);
+    if (!claimed) return;
     if (!inspiration_wifi_ready()) {
         inspiration_wifi_begin_upload_window();
+        if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+            inspiration_chunk_queue_retry(&s_chunks, chunk.sequence);
+            xSemaphoreGive(s_chunks_mutex);
+        }
         return;
     }
-    inspiration_upload_next(&s_chunks);
-    if (!s_chunks.count) inspiration_wifi_end_upload_window();
+    esp_err_t err = inspiration_upload_chunk(&chunk);
+    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    if (err == ESP_OK && inspiration_chunk_queue_acknowledge(&s_chunks, chunk.sequence)) {
+        portENTER_CRITICAL(&s_lock);
+        inspiration_state_chunk_acknowledged(&s_state);
+        portEXIT_CRITICAL(&s_lock);
+    }
+    else inspiration_chunk_queue_retry(&s_chunks, chunk.sequence);
+    bool empty = s_chunks.count == 0;
+    xSemaphoreGive(s_chunks_mutex);
+    if (empty) inspiration_wifi_end_upload_window();
 }
 
 // Network I/O may block for seconds.  It must never run from recorder_task,
@@ -170,6 +194,8 @@ esp_err_t inspiration_recorder_init(void)
 {
     inspiration_state_init(&s_state);
     inspiration_chunk_queue_init(&s_chunks);
+    s_chunks_mutex = xSemaphoreCreateMutex();
+    if (!s_chunks_mutex) return ESP_ERR_NO_MEM;
     esp_err_t err = inspiration_storage_init();
     if (err != ESP_OK) return err;
     inspiration_upload_load_config();

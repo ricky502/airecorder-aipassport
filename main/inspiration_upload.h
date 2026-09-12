@@ -10,5 +10,4 @@
 // Until configured, offline chunks remain safely queued.
 esp_err_t inspiration_upload_load_config(void);
 bool inspiration_upload_configured(void);
-esp_err_t inspiration_upload_next(inspiration_chunk_queue_t *queue);
-
+esp_err_t inspiration_upload_chunk(const inspiration_chunk_t *chunk);
