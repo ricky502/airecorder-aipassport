@@ -10,6 +10,8 @@
 #include "inspiration_chunk_queue.h"
 #include "inspiration_config.h"
 #include "inspiration_storage.h"
+#include "inspiration_upload.h"
+#include "inspiration_wifi.h"
 
 #define RECORDER_BLOCK_SAMPLES 320U
 #define RECORDER_PACKET_BYTES (INSPIRATION_ADPCM_HEADER_BYTES + RECORDER_BLOCK_SAMPLES / 2U)
@@ -116,6 +118,7 @@ static void recorder_task(void *unused)
     for (;;) {
         recorder_event_t event;
         if (!state_is_recording()) {
+            if (inspiration_wifi_ready()) inspiration_upload_next(&s_chunks);
             if (xQueueReceive(s_events, &event, portMAX_DELAY) == pdTRUE) process_event(event);
             continue;
         }
@@ -136,6 +139,7 @@ static void recorder_task(void *unused)
         portEXIT_CRITICAL(&s_lock);
         if (s_chunk_samples >= INSPIRATION_CHUNK_SECONDS * INSPIRATION_SAMPLE_RATE_HZ) {
             if (!finalize_chunk() || open_chunk() != ESP_OK) state_fail();
+            else if (inspiration_wifi_ready()) inspiration_upload_next(&s_chunks);
         }
     }
 }
@@ -146,6 +150,7 @@ esp_err_t inspiration_recorder_init(void)
     inspiration_chunk_queue_init(&s_chunks);
     esp_err_t err = inspiration_storage_init();
     if (err != ESP_OK) return err;
+    inspiration_upload_load_config();
     s_events = xQueueCreate(RECORDER_QUEUE_LENGTH, sizeof(recorder_event_t));
     if (!s_events) return ESP_ERR_NO_MEM;
     return xTaskCreate(recorder_task, "inspiration_rec", 4096, NULL, 4, NULL) == pdPASS
