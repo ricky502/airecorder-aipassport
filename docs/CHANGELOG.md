@@ -6,6 +6,11 @@
 
 ## Unreleased
 
+- Started the Inspiration Recorder project: added a host-tested recording state
+  machine and a dependency-free local inbox that accepts both the existing
+  Cardputer WAV route and ordered AI Passport IMA-ADPCM sessions. Agent
+  forwarding remains optional and receives only a durable recording event.
+
 - Added the supplied 80-byte CW2017 profile for the specified 520 mAh cell, including content/update-flag checks, verified writes, the required restart sequence, and bounded SOC-readiness polling.
 
 - Expanded the environment bootstrap document: added Espressif's Git service mirror (`git.espressif.com.cn`) as the preferred mainland-China route for ESP-IDF v5.5.3 and its submodules, documented submodule long-wait/timeout handling, in-place repair, and the pinned-commit shallow fetch for large submodules such as `esp32-wifi-lib`, warned about stale per-repository Jihulab `insteadOf` residue, and added the official offline release archive as a last-resort fallback (learned from `esp-mosaico/esp-mosaico-vibe`).
