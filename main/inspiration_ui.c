@@ -1,6 +1,7 @@
 #include "inspiration_ui.h"
 
 #include <stdio.h>
+#include <time.h>
 #include "bsp_battery.h"
 #include "inspiration_recorder.h"
 #include "inspiration_storage.h"
@@ -13,7 +14,7 @@
 #define RED 0xFF5E64
 #define AMBER 0xF6C75A
 
-static lv_obj_t *s_status, *s_footer, *s_meter[18];
+static lv_obj_t *s_top, *s_status, *s_footer, *s_meter[18];
 static uint8_t s_stop_ticks;
 
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color)
@@ -58,9 +59,17 @@ static void tick(lv_timer_t *timer)
     char battery_text[8];
     if (battery < 0) snprintf(battery_text, sizeof(battery_text), "--%%");
     else snprintf(battery_text, sizeof(battery_text), "%d%%", battery);
-    lv_label_set_text_fmt(s_footer, "WIFI %s     CACHE %02u:%02u     BAT %s",
+    lv_label_set_text_fmt(s_footer, "WIFI %s    CACHE %02u:%02u",
                           state.wifi_ready ? "READY" : "OFFLINE",
-                          remaining / 60U, remaining % 60U, battery_text);
+                          remaining / 60U, remaining % 60U);
+    time_t now = time(NULL);
+    struct tm local = {0};
+    if (now > 1704067200 && localtime_r(&now, &local)) {
+        lv_label_set_text_fmt(s_top, "%02d/%02d  %02d:%02d                         %s",
+                              local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, battery_text);
+    } else {
+        lv_label_set_text_fmt(s_top, "--/--  --:--                         %s", battery_text);
+    }
 }
 
 void inspiration_ui_start(void)
@@ -70,10 +79,9 @@ void inspiration_ui_start(void)
     lv_obj_set_style_bg_color(screen, lv_color_hex(INK), 0);
     lv_obj_set_style_border_width(screen, 0, 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
-    lv_obj_t *top = lv_label_create(screen);
-    lv_label_set_text(top, "--:--  ·  INSPIRATION                         BAT --%");
-    lv_obj_set_pos(top, 12, 10);
-    lv_obj_set_style_text_color(top, lv_color_hex(LIME), 0);
+    s_top = lv_label_create(screen);
+    lv_obj_set_pos(s_top, 12, 10);
+    lv_obj_set_style_text_color(s_top, lv_color_hex(LIME), 0);
     box(screen, 12, 42, 216, 188, 0x163B45);
     lv_obj_t *placeholder = lv_label_create(screen);
     lv_label_set_text(placeholder, "YOUR LITTLE WORLD\n\nreserved for a mood card,\nan electronic pet, or a quiet thought.");
