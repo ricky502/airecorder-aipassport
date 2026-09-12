@@ -28,12 +28,17 @@ void app_main(void)
     }
     bsp_display_backlight(100);
     bsp_battery_init();
-    if (bsp_audio_init() != ESP_OK || bsp_button_init(on_key, NULL) != ESP_OK ||
-        inspiration_recorder_init() != ESP_OK) {
+    if (bsp_audio_init() != ESP_OK || bsp_button_init(on_key, NULL) != ESP_OK) {
         ESP_LOGE(TAG, "recorder initialization failed");
         return;
     }
-    inspiration_wifi_init(); // Credentials are retained; failure simply keeps offline recording available.
+    // NVS is initialized here before the recorder loads its saved endpoint and
+    // session.  A radio failure never prevents offline recording.
+    if (inspiration_wifi_init() != ESP_OK) ESP_LOGW(TAG, "Wi-Fi unavailable; offline cache remains active");
+    if (inspiration_recorder_init() != ESP_OK) {
+        ESP_LOGE(TAG, "recorder initialization failed");
+        return;
+    }
     if (bsp_lvgl_lock(1000)) {
         inspiration_ui_start();
         bsp_lvgl_unlock();

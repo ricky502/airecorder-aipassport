@@ -30,6 +30,7 @@ static uint16_t s_peak;
 static uint32_t s_next_sequence = 1;
 static uint32_t s_chunk_samples;
 static FILE *s_chunk_file;
+static bool s_completion_requested;
 
 static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
 {
@@ -78,7 +79,7 @@ static bool finalize_chunk(void)
     bool closed = fclose(s_chunk_file) == 0;
     s_chunk_file = NULL;
     if (!closed || bytes <= 0 ||
-        xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return false;
+        xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return false;
     bool queued = inspiration_chunk_queue_enqueue(&s_chunks, s_next_sequence, (uint32_t)bytes);
     xSemaphoreGive(s_chunks_mutex);
     if (!queued) return false;
@@ -91,23 +92,34 @@ static bool finalize_chunk(void)
 
 static void service_upload_window(void)
 {
-    if (!inspiration_upload_configured()) return;
+    if (!inspiration_upload_configured() || !inspiration_upload_session_active()) return;
     inspiration_chunk_t chunk;
-    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     inspiration_chunk_t *claimed = inspiration_chunk_queue_next_ready(&s_chunks);
     if (claimed) chunk = *claimed;
     xSemaphoreGive(s_chunks_mutex);
-    if (!claimed) return;
+    if (!claimed) {
+        if (!s_completion_requested) return;
+        if (!inspiration_wifi_ready()) {
+            inspiration_wifi_begin_upload_window();
+            return;
+        }
+        if (inspiration_upload_complete() == ESP_OK && inspiration_upload_clear_session() == ESP_OK) {
+            s_completion_requested = false;
+            inspiration_wifi_end_upload_window();
+        }
+        return;
+    }
     if (!inspiration_wifi_ready()) {
         inspiration_wifi_begin_upload_window();
-        if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) == pdTRUE) {
+        if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) == pdTRUE) {
             inspiration_chunk_queue_retry(&s_chunks, chunk.sequence);
             xSemaphoreGive(s_chunks_mutex);
         }
         return;
     }
     esp_err_t err = inspiration_upload_chunk(&chunk);
-    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(5)) != pdTRUE) return;
+    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (err == ESP_OK && inspiration_chunk_queue_acknowledge(&s_chunks, chunk.sequence)) {
         portENTER_CRITICAL(&s_lock);
         inspiration_state_chunk_acknowledged(&s_state);
@@ -134,6 +146,10 @@ static bool start_recording(void)
 {
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) != ESP_OK ||
         open_chunk() != ESP_OK) return false;
+    // Recording must remain usable even when NVS/radio setup is temporarily
+    // unavailable.  Upload will resume after a session can be persisted.
+    inspiration_upload_begin_session();
+    s_completion_requested = false;
     portENTER_CRITICAL(&s_lock);
     inspiration_state_toggle_recording(&s_state);
     portEXIT_CRITICAL(&s_lock);
@@ -159,6 +175,7 @@ static void process_event(recorder_event_t event)
         portEXIT_CRITICAL(&s_lock);
         if (!finalize_chunk()) state_fail();
         else {
+            s_completion_requested = true;
             portENTER_CRITICAL(&s_lock);
             inspiration_state_finalizing_complete(&s_state);
             portEXIT_CRITICAL(&s_lock);
