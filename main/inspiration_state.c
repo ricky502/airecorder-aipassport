@@ -32,6 +32,21 @@ void inspiration_state_stop(inspiration_state_t *state)
     state->phase = INSPIRATION_FINALIZING;
 }
 
+void inspiration_state_finalizing_complete(inspiration_state_t *state)
+{
+    if (state->phase == INSPIRATION_FINALIZING) state->phase = INSPIRATION_IDLE;
+}
+
+void inspiration_state_clear_stop_indicator(inspiration_state_t *state)
+{
+    state->stop_indicator = false;
+}
+
+void inspiration_state_fail(inspiration_state_t *state)
+{
+    state->phase = INSPIRATION_ERROR;
+}
+
 void inspiration_state_chunk_queued(inspiration_state_t *state)
 {
     state->pending_chunks++;

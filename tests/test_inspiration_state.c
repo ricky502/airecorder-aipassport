@@ -31,6 +31,17 @@ int main(void)
     inspiration_state_stop(&state);
     assert(state.phase == INSPIRATION_FINALIZING);
     assert(state.stop_indicator);
+    inspiration_state_finalizing_complete(&state);
+    assert(state.phase == INSPIRATION_IDLE);
+    inspiration_state_clear_stop_indicator(&state);
+    assert(!state.stop_indicator);
+
+    inspiration_state_toggle_recording(&state);
+    inspiration_state_fail(&state);
+    assert(state.phase == INSPIRATION_ERROR);
+    inspiration_state_init(&state);
+    inspiration_state_toggle_recording(&state);
+    inspiration_state_stop(&state);
     inspiration_state_upload_started(&state);
     assert(state.phase == INSPIRATION_UPLOADING);
     inspiration_state_upload_finished(&state, true);

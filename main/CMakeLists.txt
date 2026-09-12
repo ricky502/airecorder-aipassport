@@ -2,6 +2,7 @@ idf_component_register(
     SRCS "main.c"
          "inspiration_adpcm.c"
          "inspiration_chunk_queue.c"
+         "inspiration_recorder.c"
          "inspiration_storage.c"
          "inspiration_state.c"
          "ui_pixel.c"
