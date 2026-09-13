@@ -21,3 +21,7 @@ bool inspiration_recorder_is_playing(void);
 uint8_t inspiration_recorder_adjust_playback_volume(int delta);
 uint8_t inspiration_recorder_playback_volume(void);
 bool inspiration_recorder_delete_chunk(uint32_t sequence);
+
+// Pause background transfers while the local library is open, so a selected
+// clip cannot be claimed by the uploader halfway through deletion.
+void inspiration_recorder_set_library_active(bool active);

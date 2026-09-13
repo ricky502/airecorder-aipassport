@@ -37,6 +37,7 @@ static bool s_completion_requested;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
 static volatile uint8_t s_playback_volume = 70;
+static volatile bool s_library_active;
 static const char *TAG = "inspiration_recorder";
 
 static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
@@ -99,10 +100,14 @@ static bool finalize_chunk(void)
 
 static void service_upload_window(void)
 {
-    if (s_playing) return;
+    if (s_playing || s_library_active) return;
     if (!inspiration_upload_configured() || !inspiration_upload_session_active()) return;
     inspiration_chunk_t chunk;
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
+    if (s_library_active) {
+        xSemaphoreGive(s_chunks_mutex);
+        return;
+    }
     inspiration_chunk_t *claimed = inspiration_chunk_queue_next_ready(&s_chunks);
     if (claimed) chunk = *claimed;
     xSemaphoreGive(s_chunks_mutex);
@@ -358,4 +363,9 @@ bool inspiration_recorder_delete_chunk(uint32_t sequence)
     }
     xSemaphoreGive(s_chunks_mutex);
     return deleted;
+}
+
+void inspiration_recorder_set_library_active(bool active)
+{
+    s_library_active = active;
 }

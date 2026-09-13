@@ -60,7 +60,12 @@ esp_err_t bsp_button_init(bsp_btn_cb_t cb, void *user) {
             .min          = BTN_MV[i][0],
             .max          = BTN_MV[i][1],
         };
-        const button_config_t bc = { 0 };
+        // This recorder has no double-click gesture. A short confirmation
+        // window keeps keys responsive while retaining long-OK.
+        const button_config_t bc = {
+            .long_press_time = 800,
+            .short_press_time = 60,
+        };
         esp_err_t e = iot_button_new_adc_device(&bc, &ac, &s_btn[i]);
         if (e != ESP_OK || !s_btn[i]) {
             ESP_LOGE(TAG, "按键 %d 创建失败 (%s) —— 检查 GPIO%d 的 ADC 配置与分压电阻",

@@ -23,8 +23,6 @@ static uint32_t s_library_chunks[16];
 static size_t s_library_count, s_library_selected;
 static bool s_delete_confirm;
 static bool s_delete_selected;
-static bool s_ignore_release;
-static bsp_btn_t s_ignore_release_button;
 static const char *s_library_notice;
 
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color)
@@ -181,12 +179,13 @@ void inspiration_ui_start(void)
     lv_obj_set_pos(s_footer, 12, 284);
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
     lv_screen_load(screen);
-    lv_timer_create(tick, 120, NULL);
+    lv_timer_create(tick, 400, NULL);
 }
 
 void inspiration_ui_open_library(void)
 {
     if (s_library) return;
+    inspiration_recorder_set_library_active(true);
     refresh_library();
     s_delete_confirm = false;
     s_delete_selected = false;
@@ -206,17 +205,9 @@ void inspiration_ui_open_library(void)
 bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
 {
     if (!s_library) return false;
-    // The button component reports a CLICK on release after a LONG event.
-    // Ignore that release so a long-OK delete prompt is not immediately
-    // interpreted as the safe KEEP choice.
-    if (event == BSP_BTN_CLICK && s_ignore_release && button == s_ignore_release_button) {
-        s_ignore_release = false;
-        return true;
-    }
     if (button == BSP_BTN_UP && event == BSP_BTN_LONG) {
-        s_ignore_release = true;
-        s_ignore_release_button = button;
         inspiration_recorder_stop_playback();
+        inspiration_recorder_set_library_active(false);
         lv_screen_load(s_home);
         lv_obj_delete(s_library);
         s_library = NULL;
@@ -224,8 +215,6 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         return true;
     }
     if (button == BSP_BTN_OK && event == BSP_BTN_LONG && !inspiration_recorder_is_playing() && s_library_count) {
-        s_ignore_release = true;
-        s_ignore_release_button = button;
         s_delete_confirm = true;
         s_delete_selected = false; // Default to the safe, non-destructive choice.
         render_library();
