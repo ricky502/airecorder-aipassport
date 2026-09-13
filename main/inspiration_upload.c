@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "esp_http_client.h"
+#include "esp_log.h"
 #include "esp_mac.h"
 #include "mdns.h"
 #include "nvs.h"
@@ -23,6 +24,7 @@ static char s_endpoint[128];
 static char s_session[40];
 static char s_receiver_id[40];
 static bool s_endpoint_dynamic;
+static const char *TAG = "inspiration_upload";
 
 esp_err_t inspiration_upload_load_config(void)
 {
@@ -111,6 +113,7 @@ esp_err_t inspiration_upload_discover_receiver(void)
             snprintf(s_receiver_id, sizeof(s_receiver_id), "%s", receiver_id);
         }
         s_endpoint_dynamic = true;
+        ESP_LOGI(TAG, "mDNS 绑定接收端: %s", s_endpoint);
         found = ESP_OK;
         break;
     }
@@ -131,6 +134,7 @@ esp_err_t inspiration_upload_discover_receiver(void)
             save_receiver_id(receiver_id) == ESP_OK) {
             snprintf(s_receiver_id, sizeof(s_receiver_id), "%s", receiver_id);
             s_endpoint_dynamic = true;
+            ESP_LOGI(TAG, "mDNS 重新绑定接收端: %s", s_endpoint);
             found = ESP_OK;
         }
     }
