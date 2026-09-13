@@ -103,9 +103,11 @@ static void tick(lv_timer_t *timer)
     lv_label_set_text(s_status, word);
     lv_obj_set_style_text_color(s_status, lv_color_hex(color), 0);
     for (int i = 0; i < 12; i++) {
-        int height = state.phase == INSPIRATION_RECORDING ? waveform[i] : 2;
+        // Keep the live waveform short enough to share one visual row with
+        // the recorder state, rather than wasting a separate line below it.
+        int height = state.phase == INSPIRATION_RECORDING ? (waveform[i] + 1) / 2 : 2;
         lv_obj_set_height(s_meter[i], height);
-        lv_obj_set_y(s_meter[i], 276 - height);
+        lv_obj_set_y(s_meter[i], 277 - height);
         lv_obj_set_style_bg_color(s_meter[i], lv_color_hex(color), 0);
     }
     int battery = bsp_battery_soc();
@@ -126,7 +128,7 @@ static void tick(lv_timer_t *timer)
     time_t now = time(NULL);
     struct tm local = {0};
     if (now > 1704067200 && localtime_r(&now, &local)) {
-        int frame = local.tm_hour % MEDITATION_HOUR_FRAME_COUNT;
+        int frame = local.tm_hour / 2;
         if (frame != s_hour_frame) {
             lv_image_set_src(s_illustration, &meditation_hour_images[frame]);
             s_hour_frame = frame;
@@ -154,17 +156,14 @@ void inspiration_ui_start(void)
     // the entire upper screen rather than a decorative empty gap.
     s_illustration = lv_image_create(screen);
     lv_image_set_src(s_illustration, &meditation_hour_images[0]);
-    // Keep the image's box exactly inside the main-card area.  STRETCH anchors
-    // scaling at its top-left corner instead of expanding around the center,
-    // so it cannot cover the status bar or drift into the upper-left screen.
-    lv_obj_set_size(s_illustration, 216, 217);
-    lv_image_set_inner_align(s_illustration, LV_IMAGE_ALIGN_STRETCH);
+    // Full-size source artwork avoids scaler bleed at the card's lower edge.
+    lv_obj_set_size(s_illustration, 216, 235);
     lv_obj_set_pos(s_illustration, 12, 29);
     s_status = lv_label_create(screen);
-    lv_obj_set_pos(s_status, 13, 250);
+    lv_obj_set_pos(s_status, 13, 266);
     // A slim, deliberately secondary waveform: audio state should be legible
     // without competing with the main visual card.
-    for (int i = 0; i < 12; i++) s_meter[i] = box(screen, 79 + i * 6, 276, 3, 2, MINT);
+    for (int i = 0; i < 12; i++) s_meter[i] = box(screen, 79 + i * 6, 275, 3, 2, MINT);
     s_footer = lv_label_create(screen);
     lv_obj_set_pos(s_footer, 12, 284);
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
