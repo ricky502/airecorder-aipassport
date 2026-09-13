@@ -1,6 +1,7 @@
 #include "inspiration_wifi.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_event.h"
@@ -134,6 +135,8 @@ static void setup_task(void *unused)
 static void start_clock_sync(void)
 {
     if (s_sntp_started) return;
+    setenv("TZ", "CST-8", 1);
+    tzset();
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "ntp.aliyun.com");
     esp_sntp_setservername(1, "pool.ntp.org");

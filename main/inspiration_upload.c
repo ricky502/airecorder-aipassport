@@ -85,9 +85,10 @@ static esp_err_t save_receiver_id(const char *receiver_id)
 esp_err_t inspiration_upload_discover_receiver(void)
 {
     mdns_result_t *results = NULL;
-    esp_err_t err = mdns_query_ptr(RECEIVER_SERVICE, RECEIVER_PROTO, 1800, 8, &results);
+    esp_err_t err = mdns_query_ptr(RECEIVER_SERVICE, RECEIVER_PROTO, 4000, 8, &results);
     if (err != ESP_OK) return err;
     esp_err_t found = ESP_ERR_NOT_FOUND;
+    mdns_result_t *fallback = NULL;
     for (mdns_result_t *result = results; result; result = result->next) {
         if (result->port == 0 || result->ip_protocol != MDNS_IP_PROTOCOL_V4 || !result->addr) continue;
         const char *receiver_id = NULL;
@@ -98,6 +99,7 @@ esp_err_t inspiration_upload_discover_receiver(void)
             }
         }
         if (!receiver_id || !receiver_id[0] || strlen(receiver_id) >= sizeof(s_receiver_id)) continue;
+        if (!fallback) fallback = result;
         if (s_receiver_id[0] && strcmp(s_receiver_id, receiver_id) != 0) continue;
         char address[48] = {0};
         ip4addr_ntoa_r((const ip4_addr_t *)&result->addr->addr.u_addr.ip4, address, sizeof(address));
@@ -111,6 +113,26 @@ esp_err_t inspiration_upload_discover_receiver(void)
         s_endpoint_dynamic = true;
         found = ESP_OK;
         break;
+    }
+    // If the remembered computer was replaced or its receiver identity was
+    // regenerated, bind to the only/current service instead of retrying
+    // forever while rejecting every valid mDNS answer.
+    if (found != ESP_OK && fallback) {
+        const char *receiver_id = NULL;
+        for (size_t i = 0; i < fallback->txt_count; ++i) {
+            if (fallback->txt[i].key && strcmp(fallback->txt[i].key, "id") == 0) {
+                receiver_id = fallback->txt[i].value;
+                break;
+            }
+        }
+        char address[48] = {0};
+        ip4addr_ntoa_r((const ip4_addr_t *)&fallback->addr->addr.u_addr.ip4, address, sizeof(address));
+        if (receiver_id && address[0] && snprintf(s_endpoint, sizeof(s_endpoint), "http://%s:%u", address, fallback->port) > 0 &&
+            save_receiver_id(receiver_id) == ESP_OK) {
+            snprintf(s_receiver_id, sizeof(s_receiver_id), "%s", receiver_id);
+            s_endpoint_dynamic = true;
+            found = ESP_OK;
+        }
     }
     mdns_query_results_free(results);
     return found;
