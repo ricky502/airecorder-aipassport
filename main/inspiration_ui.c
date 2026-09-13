@@ -67,7 +67,7 @@ static void render_library(void)
     if (!s_library_text || !s_library_actions) return;
     char list[320];
     char actions[160];
-    int offset = snprintf(list, sizeof(list), "VOICE INBOX                         %02u\n", (unsigned)s_library_count);
+    int offset = snprintf(list, sizeof(list), LV_SYMBOL_AUDIO "  INBOX                         %02u\n", (unsigned)s_library_count);
     if (!s_library_count) offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "\nNo offline clips.\n");
 
     // The upper region is deliberately generous: 10 clip rows plus a header
@@ -81,7 +81,7 @@ static void render_library(void)
     size_t end = first + visible_rows;
     if (end > s_library_count) end = s_library_count;
     for (size_t i = first; i < end && offset > 0 && (size_t)offset < sizeof(list); i++) {
-        offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "%s #%06u  about 1 min\n",
+        offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "%s " LV_SYMBOL_AUDIO "  #%06u        01:00\n",
                            i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
     }
     if (s_library_count > visible_rows && offset > 0 && (size_t)offset < sizeof(list)) {
@@ -90,18 +90,19 @@ static void render_library(void)
                            (unsigned)end, (unsigned)s_library_count);
     }
     if (s_delete_confirm && s_library_count) {
-        snprintf(actions, sizeof(actions), "DELETE  #%06u\n%s KEEP       %s DELETE\nUP/DOWN choose  /  OK confirm",
+        snprintf(actions, sizeof(actions), LV_SYMBOL_WARNING "  #%06u\n%s KEEP       %s " LV_SYMBOL_TRASH " DELETE\n" LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " choose     " LV_SYMBOL_OK " confirm",
                  (unsigned)s_library_chunks[s_library_selected],
                  s_delete_selected ? " " : ">",
                  s_delete_selected ? ">" : " ");
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(RED), 0);
     } else if (inspiration_recorder_is_playing()) {
-        snprintf(actions, sizeof(actions), "PLAYING  /  VOL %u%%\nUP/DOWN volume  /  OK stop\nHold UP to return",
-                 (unsigned)inspiration_recorder_playback_volume());
+        snprintf(actions, sizeof(actions), LV_SYMBOL_PLAY "                 " LV_SYMBOL_AUDIO "  %u%%\n"
+                 LV_SYMBOL_UP "/" LV_SYMBOL_DOWN "                  " LV_SYMBOL_STOP "  OK\n"
+                 LV_SYMBOL_LEFT "  HOLD UP", (unsigned)inspiration_recorder_playback_volume());
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(MINT), 0);
     } else {
-        snprintf(actions, sizeof(actions), "%s\nOK listen  /  Hold OK delete\nHold UP to return",
-                 s_library_notice ? s_library_notice : "OFFLINE / ready to listen");
+        snprintf(actions, sizeof(actions), "%s\n" LV_SYMBOL_PLAY "  OK       " LV_SYMBOL_TRASH "  HOLD OK\n"
+                 LV_SYMBOL_LEFT "  HOLD UP", s_library_notice ? s_library_notice : "OFFLINE");
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
     }
     lv_label_set_text(s_library_text, list);
