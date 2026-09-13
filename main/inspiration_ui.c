@@ -14,8 +14,9 @@
 #define MINT 0x58D6BE
 #define RED 0xFF5E64
 #define AMBER 0xF6C75A
+#define PANEL 0x173B47
 
-static lv_obj_t *s_home, *s_library, *s_library_text, *s_library_actions;
+static lv_obj_t *s_home, *s_library, *s_library_text, *s_library_actions, *s_library_panel;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
@@ -66,7 +67,7 @@ static void render_library(void)
     if (!s_library_text || !s_library_actions) return;
     char list[320];
     char actions[160];
-    int offset = snprintf(list, sizeof(list), "VOICE INBOX  %u\n", (unsigned)s_library_count);
+    int offset = snprintf(list, sizeof(list), "VOICE INBOX                         %02u\n", (unsigned)s_library_count);
     if (!s_library_count) offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "\nNo offline clips.\n");
 
     // The upper region is deliberately generous: 10 clip rows plus a header
@@ -89,16 +90,19 @@ static void render_library(void)
                            (unsigned)end, (unsigned)s_library_count);
     }
     if (s_delete_confirm && s_library_count) {
-        snprintf(actions, sizeof(actions), "DELETE #%06u?\n%s KEEP\n%s DELETE\nUP/DOWN choose · OK confirm",
+        snprintf(actions, sizeof(actions), "DELETE  #%06u\n%s KEEP       %s DELETE\nUP/DOWN choose  /  OK confirm",
                  (unsigned)s_library_chunks[s_library_selected],
-                 s_delete_selected ? "  " : ">",
-                 s_delete_selected ? ">" : "  ");
+                 s_delete_selected ? " " : ">",
+                 s_delete_selected ? ">" : " ");
+        lv_obj_set_style_text_color(s_library_actions, lv_color_hex(RED), 0);
     } else if (inspiration_recorder_is_playing()) {
-        snprintf(actions, sizeof(actions), "PLAYING  VOL %u%%\nUP +  DOWN -  OK stop\nHold UP to return",
+        snprintf(actions, sizeof(actions), "PLAYING  /  VOL %u%%\nUP/DOWN volume  /  OK stop\nHold UP to return",
                  (unsigned)inspiration_recorder_playback_volume());
+        lv_obj_set_style_text_color(s_library_actions, lv_color_hex(MINT), 0);
     } else {
-        snprintf(actions, sizeof(actions), "%s\nUP/DOWN choose · OK listen\nHold OK delete · Hold UP return",
-                 s_library_notice ? s_library_notice : "not uploaded yet");
+        snprintf(actions, sizeof(actions), "%s\nOK listen  /  Hold OK delete\nHold UP to return",
+                 s_library_notice ? s_library_notice : "OFFLINE / ready to listen");
+        lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
     }
     lv_label_set_text(s_library_text, list);
     lv_label_set_text(s_library_actions, actions);
@@ -212,9 +216,11 @@ void inspiration_ui_open_library(void)
     lv_obj_set_size(s_library_text, 216, 210);
     lv_label_set_long_mode(s_library_text, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_text, lv_color_hex(LIME), 0);
+    s_library_panel = box(s_library, 8, 226, 224, 88, PANEL);
+    lv_obj_set_style_radius(s_library_panel, 12, 0);
     s_library_actions = lv_label_create(s_library);
-    lv_obj_set_pos(s_library_actions, 12, 232);
-    lv_obj_set_size(s_library_actions, 216, 82);
+    lv_obj_set_pos(s_library_actions, 20, 237);
+    lv_obj_set_size(s_library_actions, 200, 68);
     lv_label_set_long_mode(s_library_actions, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
     render_library();
@@ -232,6 +238,7 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         s_library = NULL;
         s_library_text = NULL;
         s_library_actions = NULL;
+        s_library_panel = NULL;
         return true;
     }
     if (button == BSP_BTN_OK && event == BSP_BTN_LONG && !inspiration_recorder_is_playing() && s_library_count) {
