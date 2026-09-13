@@ -58,7 +58,11 @@ static void tick(lv_timer_t *timer)
     unsigned remaining = (unsigned)(free_bytes / 4096U);
     char battery_text[8];
     if (battery < 0) snprintf(battery_text, sizeof(battery_text), "--%%");
-    else snprintf(battery_text, sizeof(battery_text), "%d%%", battery);
+    else {
+        unsigned display_battery = (unsigned)battery;
+        if (display_battery > 100U) display_battery = 100U;
+        snprintf(battery_text, sizeof(battery_text), "%u%%", display_battery);
+    }
     lv_label_set_text_fmt(s_footer, "WIFI %s    CACHE %02u:%02u",
                           state.wifi_ready ? "READY" : "OFFLINE",
                           remaining / 60U, remaining % 60U);
