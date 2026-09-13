@@ -57,3 +57,26 @@ bool inspiration_chunk_queue_retry(inspiration_chunk_queue_t *queue, uint32_t se
     }
     return false;
 }
+
+bool inspiration_chunk_queue_is_ready(const inspiration_chunk_queue_t *queue, uint32_t sequence)
+{
+    if (!queue) return false;
+    for (uint8_t i = 0; i < queue->count; i++) {
+        if (queue->items[i].sequence == sequence && queue->items[i].status == INSPIRATION_CHUNK_READY) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool inspiration_chunk_queue_remove_ready(inspiration_chunk_queue_t *queue, uint32_t sequence)
+{
+    if (!queue) return false;
+    for (uint8_t i = 0; i < queue->count; i++) {
+        if (queue->items[i].sequence != sequence || queue->items[i].status != INSPIRATION_CHUNK_READY) continue;
+        for (uint8_t j = i + 1; j < queue->count; j++) queue->items[j - 1] = queue->items[j];
+        queue->count--;
+        return true;
+    }
+    return false;
+}

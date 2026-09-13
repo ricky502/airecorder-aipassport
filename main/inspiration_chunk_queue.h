@@ -29,4 +29,5 @@ bool inspiration_chunk_queue_enqueue(inspiration_chunk_queue_t *queue,
 inspiration_chunk_t *inspiration_chunk_queue_next_ready(inspiration_chunk_queue_t *queue);
 bool inspiration_chunk_queue_acknowledge(inspiration_chunk_queue_t *queue, uint32_t sequence);
 bool inspiration_chunk_queue_retry(inspiration_chunk_queue_t *queue, uint32_t sequence);
-
+bool inspiration_chunk_queue_is_ready(const inspiration_chunk_queue_t *queue, uint32_t sequence);
+bool inspiration_chunk_queue_remove_ready(inspiration_chunk_queue_t *queue, uint32_t sequence);

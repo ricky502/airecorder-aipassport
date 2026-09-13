@@ -344,3 +344,18 @@ uint8_t inspiration_recorder_adjust_playback_volume(int delta)
 }
 
 uint8_t inspiration_recorder_playback_volume(void) { return s_playback_volume; }
+
+bool inspiration_recorder_delete_chunk(uint32_t sequence)
+{
+    if (!sequence || s_playing || state_is_active()) return false;
+    // Keep the queue lock while removing the file so the upload task cannot
+    // claim it between the readiness check and the filesystem deletion.
+    if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(100)) != pdTRUE) return false;
+    bool deleted = false;
+    if (inspiration_chunk_queue_is_ready(&s_chunks, sequence) &&
+        inspiration_storage_delete_chunk(sequence) == ESP_OK) {
+        deleted = inspiration_chunk_queue_remove_ready(&s_chunks, sequence);
+    }
+    xSemaphoreGive(s_chunks_mutex);
+    return deleted;
+}

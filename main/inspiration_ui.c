@@ -21,6 +21,9 @@ static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
 static size_t s_library_count, s_library_selected;
+static bool s_delete_confirm;
+static bool s_delete_selected;
+static const char *s_library_notice;
 
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color)
 {
@@ -69,13 +72,21 @@ static void render_library(void)
                            i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
     }
     if (offset > 0 && (size_t)offset < sizeof(text)) {
+        if (s_delete_confirm && s_library_count) {
+            snprintf(text + offset, sizeof(text) - (size_t)offset,
+                     "\nDELETE #%06u?\n%s KEEP\n%s DELETE\nUP/DOWN choose  OK confirm",
+                     (unsigned)s_library_chunks[s_library_selected],
+                     s_delete_selected ? "  " : ">",
+                     s_delete_selected ? ">" : "  ");
+        } else
         if (inspiration_recorder_is_playing()) {
             snprintf(text + offset, sizeof(text) - (size_t)offset,
                      "\nPLAYING  VOL %u%%\nUP +  DOWN -  OK stop\nHold UP to return",
                      (unsigned)inspiration_recorder_playback_volume());
         } else {
             snprintf(text + offset, sizeof(text) - (size_t)offset,
-                     "\nnot uploaded yet\nUP/DOWN choose  OK listen\nHold UP to return");
+                     "\n%s\nUP/DOWN choose  OK listen\nHold OK delete  Hold UP return",
+                     s_library_notice ? s_library_notice : "not uploaded yet");
         }
     }
     lv_label_set_text(s_library_text, text);
@@ -175,6 +186,9 @@ void inspiration_ui_open_library(void)
 {
     if (s_library) return;
     refresh_library();
+    s_delete_confirm = false;
+    s_delete_selected = false;
+    s_library_notice = NULL;
     s_library = lv_obj_create(NULL);
     lv_obj_remove_flag(s_library, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(s_library, lv_color_hex(INK), 0);
@@ -198,11 +212,37 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         s_library_text = NULL;
         return true;
     }
+    if (button == BSP_BTN_OK && event == BSP_BTN_LONG && !inspiration_recorder_is_playing() && s_library_count) {
+        s_delete_confirm = true;
+        s_delete_selected = false; // Default to the safe, non-destructive choice.
+        render_library();
+        return true;
+    }
     if (event != BSP_BTN_CLICK) return true;
     if (inspiration_recorder_is_playing()) {
         if (button == BSP_BTN_UP) inspiration_recorder_adjust_playback_volume(10);
         else if (button == BSP_BTN_DOWN) inspiration_recorder_adjust_playback_volume(-10);
         else if (button == BSP_BTN_OK) inspiration_recorder_stop_playback();
+        render_library();
+        return true;
+    }
+    if (s_delete_confirm) {
+        if (button == BSP_BTN_UP || button == BSP_BTN_DOWN) {
+            s_delete_selected = !s_delete_selected;
+            render_library();
+            return true;
+        }
+        if (button == BSP_BTN_OK) {
+            if (s_delete_selected) {
+                bool deleted = inspiration_recorder_delete_chunk(s_library_chunks[s_library_selected]);
+                refresh_library();
+                s_library_notice = deleted ? "DELETED" : "BUSY — wait for upload";
+            } else {
+                s_library_notice = "KEPT";
+            }
+        }
+        s_delete_confirm = false;
+        s_delete_selected = false;
         render_library();
         return true;
     }
@@ -213,6 +253,7 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
     } else if (button == BSP_BTN_OK && s_library_count) {
         inspiration_recorder_play_chunk(s_library_chunks[s_library_selected]);
     }
+    s_library_notice = NULL;
     render_library();
     return true;
 }
