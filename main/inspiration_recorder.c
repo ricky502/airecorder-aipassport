@@ -34,6 +34,7 @@ static uint32_t s_next_sequence = 1;
 static uint32_t s_chunk_samples;
 static FILE *s_chunk_file;
 static bool s_completion_requested;
+static uint32_t s_next_receiver_discovery_ms;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
 static volatile uint8_t s_playback_volume = 70;
@@ -105,8 +106,14 @@ static void service_upload_window(void)
     if (s_playing || s_library_active) return;
     if (!inspiration_upload_session_active()) return;
     if (!inspiration_upload_configured()) {
+        uint32_t now = esp_log_timestamp();
+        if (now < s_next_receiver_discovery_ms) return;
         if (!inspiration_wifi_ready()) { inspiration_wifi_begin_upload_window(); return; }
-        if (inspiration_upload_discover_receiver() != ESP_OK) return;
+        if (inspiration_upload_discover_receiver() != ESP_OK) {
+            inspiration_wifi_end_upload_window();
+            s_next_receiver_discovery_ms = now + 10000U;
+            return;
+        }
     }
     inspiration_chunk_t chunk;
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
@@ -126,6 +133,10 @@ static void service_upload_window(void)
         if (inspiration_upload_complete() == ESP_OK && inspiration_upload_clear_session() == ESP_OK) {
             s_completion_requested = false;
             inspiration_wifi_end_upload_window();
+        } else if (inspiration_upload_configured()) {
+            inspiration_upload_clear_dynamic_endpoint();
+            inspiration_wifi_end_upload_window();
+            s_next_receiver_discovery_ms = esp_log_timestamp() + 3000U;
         }
         return;
     }
@@ -144,7 +155,12 @@ static void service_upload_window(void)
         inspiration_state_chunk_acknowledged(&s_state);
         portEXIT_CRITICAL(&s_lock);
     }
-    else inspiration_chunk_queue_retry(&s_chunks, chunk.sequence);
+    else {
+        inspiration_chunk_queue_retry(&s_chunks, chunk.sequence);
+        inspiration_upload_clear_dynamic_endpoint();
+        inspiration_wifi_end_upload_window();
+        s_next_receiver_discovery_ms = esp_log_timestamp() + 3000U;
+    }
     bool empty = s_chunks.count == 0;
     xSemaphoreGive(s_chunks_mutex);
     if (empty) inspiration_wifi_end_upload_window();

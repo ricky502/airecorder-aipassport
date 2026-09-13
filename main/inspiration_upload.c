@@ -22,12 +22,14 @@
 static char s_endpoint[128];
 static char s_session[40];
 static char s_receiver_id[40];
+static bool s_endpoint_dynamic;
 
 esp_err_t inspiration_upload_load_config(void)
 {
     s_endpoint[0] = '\0';
     s_session[0] = '\0';
     s_receiver_id[0] = '\0';
+    s_endpoint_dynamic = false;
     nvs_handle_t nvs;
     if (nvs_open(UPLOAD_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
         snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
@@ -38,6 +40,7 @@ esp_err_t inspiration_upload_load_config(void)
     size_t receiver_id_size = sizeof(s_receiver_id);
     esp_err_t err = nvs_get_str(nvs, UPLOAD_ENDPOINT_KEY, s_endpoint, &endpoint_size);
     if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    else if (err == ESP_OK) s_endpoint_dynamic = false;
     // A missing session or receiver identity is normal before first use.
     esp_err_t session_err = nvs_get_str(nvs, UPLOAD_SESSION_KEY, s_session, &session_size);
     if (session_err == ESP_ERR_NVS_NOT_FOUND) session_err = ESP_OK;
@@ -61,7 +64,10 @@ esp_err_t inspiration_upload_set_endpoint(const char *endpoint)
     if (err == ESP_ERR_NVS_NOT_FOUND && !endpoint[0]) err = ESP_OK;
     if (err == ESP_OK) err = nvs_commit(nvs);
     nvs_close(nvs);
-    if (err == ESP_OK) snprintf(s_endpoint, sizeof(s_endpoint), "%s", endpoint);
+    if (err == ESP_OK) {
+        snprintf(s_endpoint, sizeof(s_endpoint), "%s", endpoint);
+        s_endpoint_dynamic = false;
+    }
     return err;
 }
 
@@ -102,11 +108,20 @@ esp_err_t inspiration_upload_discover_receiver(void)
             if (save_receiver_id(receiver_id) != ESP_OK) { s_endpoint[0] = '\0'; continue; }
             snprintf(s_receiver_id, sizeof(s_receiver_id), "%s", receiver_id);
         }
+        s_endpoint_dynamic = true;
         found = ESP_OK;
         break;
     }
     mdns_query_results_free(results);
     return found;
+}
+
+void inspiration_upload_clear_dynamic_endpoint(void)
+{
+    if (s_endpoint_dynamic) {
+        s_endpoint[0] = '\0';
+        s_endpoint_dynamic = false;
+    }
 }
 
 bool inspiration_upload_configured(void) { return s_endpoint[0]; }
