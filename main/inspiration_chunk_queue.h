@@ -31,3 +31,5 @@ bool inspiration_chunk_queue_acknowledge(inspiration_chunk_queue_t *queue, uint3
 bool inspiration_chunk_queue_retry(inspiration_chunk_queue_t *queue, uint32_t sequence);
 bool inspiration_chunk_queue_is_ready(const inspiration_chunk_queue_t *queue, uint32_t sequence);
 bool inspiration_chunk_queue_remove_ready(inspiration_chunk_queue_t *queue, uint32_t sequence);
+// Remove a locally deleted clip regardless of whether the uploader has claimed it.
+bool inspiration_chunk_queue_remove_any(inspiration_chunk_queue_t *queue, uint32_t sequence);

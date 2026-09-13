@@ -22,5 +22,11 @@ int main(void)
     assert(chunk && chunk->sequence == 8);
     assert(inspiration_chunk_queue_acknowledge(&queue, 8));
     assert(queue.count == 0);
+
+    assert(inspiration_chunk_queue_enqueue(&queue, 9, 360));
+    chunk = inspiration_chunk_queue_next_ready(&queue);
+    assert(chunk && chunk->sequence == 9);
+    assert(inspiration_chunk_queue_remove_any(&queue, 9));
+    assert(queue.count == 0);
     return 0;
 }

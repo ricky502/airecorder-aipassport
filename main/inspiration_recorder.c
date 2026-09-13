@@ -392,14 +392,14 @@ void inspiration_recorder_playback_progress(uint32_t *elapsed_ms_out, uint32_t *
 bool inspiration_recorder_delete_chunk(uint32_t sequence)
 {
     if (!sequence || s_playing || state_is_active()) return false;
-    // Keep the queue lock while removing the file so the upload task cannot
-    // claim it between the readiness check and the filesystem deletion.
+    // The library enumerates files directly from voicefs. A clip can therefore
+    // still be visible after the uploader has claimed it (UPLOADING); deleting
+    // only READY entries made such clips appear undeletable forever.
+    // Keep the queue lock while removing both representations so no new upload
+    // can claim the entry between the filesystem deletion and queue cleanup.
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(100)) != pdTRUE) return false;
-    bool deleted = false;
-    if (inspiration_chunk_queue_is_ready(&s_chunks, sequence) &&
-        inspiration_storage_delete_chunk(sequence) == ESP_OK) {
-        deleted = inspiration_chunk_queue_remove_ready(&s_chunks, sequence);
-    }
+    bool deleted = inspiration_storage_delete_chunk(sequence) == ESP_OK;
+    if (deleted) inspiration_chunk_queue_remove_any(&s_chunks, sequence);
     xSemaphoreGive(s_chunks_mutex);
     return deleted;
 }

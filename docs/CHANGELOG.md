@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+- Fixed the recording-list deletion race so a local clip remains deletable even after the uploader has claimed it, with queue state cleaned up together with the file.
+
 - Fixed Passport rolling-chunk decoding so concatenated IMA-ADPCM packets are reconstructed into WAV; added Feishu Agent webhook delivery with Bearer auth, idempotency keys, retries, and safe local retention until a destination accepts the recording.
 
 - Started the Inspiration Recorder project: added a host-tested recording state
