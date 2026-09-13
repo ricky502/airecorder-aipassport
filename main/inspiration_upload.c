@@ -7,6 +7,7 @@
 #include "esp_mac.h"
 #include "nvs.h"
 #include "esp_random.h"
+#include "inspiration_config.h"
 #include "inspiration_storage.h"
 
 #define UPLOAD_NAMESPACE "inspiration"
@@ -21,7 +22,10 @@ esp_err_t inspiration_upload_load_config(void)
     s_endpoint[0] = '\0';
     s_session[0] = '\0';
     nvs_handle_t nvs;
-    if (nvs_open(UPLOAD_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return ESP_ERR_NOT_FOUND;
+    if (nvs_open(UPLOAD_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
+        snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
+        return ESP_OK;
+    }
     size_t endpoint_size = sizeof(s_endpoint);
     size_t session_size = sizeof(s_session);
     esp_err_t err = nvs_get_str(nvs, UPLOAD_ENDPOINT_KEY, s_endpoint, &endpoint_size);
@@ -32,6 +36,10 @@ esp_err_t inspiration_upload_load_config(void)
         if (session_err != ESP_OK) err = session_err;
     }
     nvs_close(nvs);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
+        return ESP_OK;
+    }
     return err;
 }
 
