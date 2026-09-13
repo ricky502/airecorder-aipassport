@@ -6,6 +6,7 @@
 
 #include "esp_http_client.h"
 #include "esp_mac.h"
+#include "mdns.h"
 #include "nvs.h"
 #include "esp_random.h"
 #include "inspiration_config.h"
@@ -14,14 +15,19 @@
 #define UPLOAD_NAMESPACE "inspiration"
 #define UPLOAD_ENDPOINT_KEY "endpoint"
 #define UPLOAD_SESSION_KEY "session"
+#define UPLOAD_RECEIVER_ID_KEY "receiver_id"
+#define RECEIVER_SERVICE "_aipassport"
+#define RECEIVER_PROTO "_tcp"
 
 static char s_endpoint[128];
 static char s_session[40];
+static char s_receiver_id[40];
 
 esp_err_t inspiration_upload_load_config(void)
 {
     s_endpoint[0] = '\0';
     s_session[0] = '\0';
+    s_receiver_id[0] = '\0';
     nvs_handle_t nvs;
     if (nvs_open(UPLOAD_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) {
         snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
@@ -29,32 +35,78 @@ esp_err_t inspiration_upload_load_config(void)
     }
     size_t endpoint_size = sizeof(s_endpoint);
     size_t session_size = sizeof(s_session);
+    size_t receiver_id_size = sizeof(s_receiver_id);
     esp_err_t err = nvs_get_str(nvs, UPLOAD_ENDPOINT_KEY, s_endpoint, &endpoint_size);
-    if (err == ESP_OK) {
-        // A missing session is normal before the first recording.
-        esp_err_t session_err = nvs_get_str(nvs, UPLOAD_SESSION_KEY, s_session, &session_size);
-        if (session_err == ESP_ERR_NVS_NOT_FOUND) session_err = ESP_OK;
-        if (session_err != ESP_OK) err = session_err;
-    }
+    if (err == ESP_ERR_NVS_NOT_FOUND) err = ESP_OK;
+    // A missing session or receiver identity is normal before first use.
+    esp_err_t session_err = nvs_get_str(nvs, UPLOAD_SESSION_KEY, s_session, &session_size);
+    if (session_err == ESP_ERR_NVS_NOT_FOUND) session_err = ESP_OK;
+    esp_err_t receiver_err = nvs_get_str(nvs, UPLOAD_RECEIVER_ID_KEY, s_receiver_id, &receiver_id_size);
+    if (receiver_err == ESP_ERR_NVS_NOT_FOUND) receiver_err = ESP_OK;
     nvs_close(nvs);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
-        snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
-        return ESP_OK;
-    }
-    return err;
+    if (err != ESP_OK) return err;
+    if (session_err != ESP_OK) return session_err;
+    if (receiver_err != ESP_OK) return receiver_err;
+    if (!s_endpoint[0]) snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
+    return ESP_OK;
 }
 
 esp_err_t inspiration_upload_set_endpoint(const char *endpoint)
 {
-    if (!endpoint || !endpoint[0] || strlen(endpoint) >= sizeof(s_endpoint)) return ESP_ERR_INVALID_ARG;
+    if (!endpoint || strlen(endpoint) >= sizeof(s_endpoint)) return ESP_ERR_INVALID_ARG;
     nvs_handle_t nvs;
     esp_err_t err = nvs_open(UPLOAD_NAMESPACE, NVS_READWRITE, &nvs);
     if (err != ESP_OK) return err;
-    err = nvs_set_str(nvs, UPLOAD_ENDPOINT_KEY, endpoint);
+    err = endpoint[0] ? nvs_set_str(nvs, UPLOAD_ENDPOINT_KEY, endpoint) : nvs_erase_key(nvs, UPLOAD_ENDPOINT_KEY);
+    if (err == ESP_ERR_NVS_NOT_FOUND && !endpoint[0]) err = ESP_OK;
     if (err == ESP_OK) err = nvs_commit(nvs);
     nvs_close(nvs);
     if (err == ESP_OK) snprintf(s_endpoint, sizeof(s_endpoint), "%s", endpoint);
     return err;
+}
+
+static esp_err_t save_receiver_id(const char *receiver_id)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(UPLOAD_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(nvs, UPLOAD_RECEIVER_ID_KEY, receiver_id);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    return err;
+}
+
+esp_err_t inspiration_upload_discover_receiver(void)
+{
+    mdns_result_t *results = NULL;
+    esp_err_t err = mdns_query_ptr(RECEIVER_SERVICE, RECEIVER_PROTO, 1800, 8, &results);
+    if (err != ESP_OK) return err;
+    esp_err_t found = ESP_ERR_NOT_FOUND;
+    for (mdns_result_t *result = results; result; result = result->next) {
+        if (result->port == 0 || result->ip_protocol != MDNS_IP_PROTOCOL_V4 || !result->addr) continue;
+        const char *receiver_id = NULL;
+        for (size_t i = 0; i < result->txt_count; ++i) {
+            if (result->txt[i].key && strcmp(result->txt[i].key, "id") == 0) {
+                receiver_id = result->txt[i].value;
+                break;
+            }
+        }
+        if (!receiver_id || !receiver_id[0] || strlen(receiver_id) >= sizeof(s_receiver_id)) continue;
+        if (s_receiver_id[0] && strcmp(s_receiver_id, receiver_id) != 0) continue;
+        char address[48] = {0};
+        ip4addr_ntoa_r((const ip4_addr_t *)&result->addr->addr.u_addr.ip4, address, sizeof(address));
+        if (!address[0]) continue;
+        int written = snprintf(s_endpoint, sizeof(s_endpoint), "http://%s:%u", address, result->port);
+        if (written < 0 || (size_t)written >= sizeof(s_endpoint)) continue;
+        if (!s_receiver_id[0]) {
+            if (save_receiver_id(receiver_id) != ESP_OK) { s_endpoint[0] = '\0'; continue; }
+            snprintf(s_receiver_id, sizeof(s_receiver_id), "%s", receiver_id);
+        }
+        found = ESP_OK;
+        break;
+    }
+    mdns_query_results_free(results);
+    return found;
 }
 
 bool inspiration_upload_configured(void) { return s_endpoint[0]; }

@@ -16,7 +16,11 @@ curl http://127.0.0.1:8787/health
 ```
 
 Set `AI_REC_ROOT` to choose an audio directory and `AI_REC_PORT` to choose a
-port. `AI_REC_AGENT_WEBHOOK` is optional. When set, the service POSTs one JSON
+port. On startup the service advertises `_aipassport._tcp` with mDNS, so a
+Passport on the same LAN can discover it without a fixed computer IP. The
+receiver identity is stored in `AI_REC_ROOT/receiver.id` and is ignored by
+Git. `AI_REC_SERVICE_NAME` changes the advertised name and
+`AI_REC_RECEIVER_ID` can explicitly set the identity. `AI_REC_AGENT_WEBHOOK` is optional. When set, the service POSTs one JSON
 recording event to that URL after it has durably stored the audio.
 
 ## Compatible routes

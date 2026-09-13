@@ -103,7 +103,11 @@ static bool finalize_chunk(void)
 static void service_upload_window(void)
 {
     if (s_playing || s_library_active) return;
-    if (!inspiration_upload_configured() || !inspiration_upload_session_active()) return;
+    if (!inspiration_upload_session_active()) return;
+    if (!inspiration_upload_configured()) {
+        if (!inspiration_wifi_ready()) { inspiration_wifi_begin_upload_window(); return; }
+        if (inspiration_upload_discover_receiver() != ESP_OK) return;
+    }
     inspiration_chunk_t chunk;
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (s_library_active) {

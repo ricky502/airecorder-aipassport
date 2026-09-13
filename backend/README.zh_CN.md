@@ -14,7 +14,10 @@ python3 server.py
 curl http://127.0.0.1:8787/health
 ```
 
-用 `AI_REC_ROOT` 指定音频保存目录，用 `AI_REC_PORT` 改监听端口。
+用 `AI_REC_ROOT` 指定音频保存目录，用 `AI_REC_PORT` 改监听端口。服务启动时会在同一局域网
+广播 `_aipassport._tcp` mDNS 服务，卡片因此不需要固定电脑 IP；电脑的接收端标识会保存在
+`AI_REC_ROOT/receiver.id`，不要把这个运行时文件提交到仓库。也可用 `AI_REC_SERVICE_NAME`
+修改广播名称，或用 `AI_REC_RECEIVER_ID` 显式指定标识。
 `AI_REC_AGENT_WEBHOOK` 是可选的：设置后，服务在确认音频已写入磁盘后，会把一条 JSON
 录音事件 POST 给同一个 AI/飞书处理入口。
 

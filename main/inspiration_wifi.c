@@ -6,6 +6,7 @@
 #include "esp_event.h"
 #include "esp_http_server.h"
 #include "esp_mac.h"
+#include "mdns.h"
 #include "esp_netif.h"
 #include "esp_sntp.h"
 #include "esp_system.h"
@@ -29,7 +30,7 @@ static const char SETUP_PAGE[] =
     "<h2>AI Passport · 灵感记忆卡</h2><p>填好后卡片会重启并保存设置。</p>"
     "<form method=post action=/save><label>Wi-Fi 名称</label><input name=ssid maxlength=32 required>"
     "<label>Wi-Fi 密码</label><input name=pass type=password maxlength=64>"
-    "<label>中转地址</label><input name=endpoint type=url maxlength=127 value='" INSPIRATION_DEFAULT_BACKEND_ENDPOINT "' placeholder='http://computer.local:8787' required>"
+    "<label>中转地址（可留空，自动发现本电脑）</label><input name=endpoint type=url maxlength=127 value='" INSPIRATION_DEFAULT_BACKEND_ENDPOINT "' placeholder='留空即可自动发现'>"
     "<button>保存并重启</button></form>";
 
 static esp_err_t setup_page_handler(httpd_req_t *request)
@@ -50,10 +51,9 @@ static esp_err_t setup_save_handler(httpd_req_t *request)
     if (received != request->content_len ||
         httpd_query_key_value(body, "ssid", ssid, sizeof(ssid)) != ESP_OK ||
         httpd_query_key_value(body, "pass", password, sizeof(password)) != ESP_OK ||
-        httpd_query_key_value(body, "endpoint", endpoint, sizeof(endpoint)) != ESP_OK ||
-        !ssid[0] || !endpoint[0] || strlen(ssid) > sizeof(station.sta.ssid) ||
+        !ssid[0] || strlen(ssid) > sizeof(station.sta.ssid) ||
         strlen(password) > sizeof(station.sta.password) || (password[0] && strlen(password) < 8)) {
-        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "check Wi-Fi name, password and endpoint");
+        httpd_resp_send_err(request, HTTPD_400_BAD_REQUEST, "check Wi-Fi name and password");
         return ESP_FAIL;
     }
     memcpy(station.sta.ssid, ssid, strlen(ssid));
@@ -138,6 +138,8 @@ esp_err_t inspiration_wifi_init(void)
     err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     if (!esp_netif_create_default_wifi_sta()) return ESP_ERR_NO_MEM;
+    err = mdns_init();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&config);
     if (err != ESP_OK) return err;

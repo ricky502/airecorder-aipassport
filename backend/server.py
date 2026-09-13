@@ -12,6 +12,7 @@ from __future__ import annotations
 import array
 import json
 import os
+import shutil
 import struct
 import subprocess
 import threading
@@ -32,8 +33,37 @@ PROCESSED = ROOT / "processed"
 PASSPORT = ROOT / "passport"
 PORT = int(os.environ.get("AI_REC_PORT", "8787"))
 CHAT_ID = os.environ.get("AI_REC_CHAT_ID", "")
+SERVICE_NAME = os.environ.get("AI_REC_SERVICE_NAME", "AI Passport Receiver")
 MAX_CHUNK_BYTES = 768 * 1024
 MAX_LEGACY_BYTES = 32 * 1024 * 1024
+
+
+def receiver_identity() -> str:
+    configured = os.environ.get("AI_REC_RECEIVER_ID", "").strip()
+    identity_file = ROOT / "receiver.id"
+    if configured:
+        return configured
+    try:
+        identity = identity_file.read_text(encoding="ascii").strip()
+        if identity: return identity
+    except FileNotFoundError:
+        pass
+    identity = uuid.uuid4().hex
+    identity_file.write_text(identity + "\n", encoding="ascii")
+    return identity
+
+
+def advertise_service() -> subprocess.Popen | None:
+    identity = receiver_identity()
+    txt = f"id={identity}"
+    dns_sd = shutil.which("dns-sd")
+    if dns_sd:
+        return subprocess.Popen([dns_sd, "-R", SERVICE_NAME, "_aipassport._tcp", "local", str(PORT), txt, "proto=1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    avahi = shutil.which("avahi-publish-service")
+    if avahi:
+        return subprocess.Popen([avahi, SERVICE_NAME, "_aipassport._tcp", str(PORT), txt, "proto=1"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    log("mDNS unavailable; Passport can still use a manually configured endpoint")
+    return None
 
 
 def ensure_dirs() -> None:
@@ -426,5 +456,9 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     ensure_dirs()
+    mdns_process = advertise_service()
     log(f"shared recorder backend starting on :{PORT}, chat={CHAT_ID or '(not configured)'}")
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    try:
+        ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    finally:
+        if mdns_process: mdns_process.terminate()

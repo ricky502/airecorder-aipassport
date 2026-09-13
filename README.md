@@ -38,10 +38,12 @@ physical keys
 ```
 
 The firmware deliberately contains no personal Wi-Fi credentials, private
-receiver address, chat identifier, or AI token. Wi-Fi credentials and the
-receiver URL are entered locally through the device provisioning page and are
-stored only on that device. The included receiver reads its own credentials
-from environment variables.
+receiver address, chat identifier, or AI token. The receiver URL may be left
+blank during provisioning: the computer advertises an mDNS service and the
+Passport discovers and binds to that computer on the same Wi-Fi, so DHCP
+address changes do not break syncing. A manual URL remains supported for
+compatibility. The included receiver reads its own credentials from environment
+variables.
 
 ## Controls
 

@@ -10,6 +10,7 @@
 // stable across a reboot so offline chunks cannot be mixed into another memo.
 esp_err_t inspiration_upload_load_config(void);
 esp_err_t inspiration_upload_set_endpoint(const char *endpoint);
+esp_err_t inspiration_upload_discover_receiver(void);
 bool inspiration_upload_configured(void);
 esp_err_t inspiration_upload_begin_session(void);
 bool inspiration_upload_session_active(void);
