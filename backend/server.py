@@ -12,7 +12,6 @@ from __future__ import annotations
 import array
 import json
 import os
-import shutil
 import struct
 import subprocess
 import threading

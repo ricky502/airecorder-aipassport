@@ -45,6 +45,30 @@ class PassportAdpcmTests(unittest.TestCase):
                 self.assertEqual((wav.getframerate(), wav.getnchannels(), wav.getsampwidth(), wav.getnframes()),
                                  (8000, 1, 2, 3))
 
+    def test_complete_reconstructs_then_enters_shared_pipeline_once(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            session = root / "session"
+            inbox = root / "inbox"
+            session.mkdir()
+            inbox.mkdir()
+            packet = struct.pack("<hBBI", 0, 0, 0, 3) + bytes([0x87])
+            (session / "000002.adpcm").write_bytes(packet)
+            (session / "000001.adpcm").write_bytes(packet)
+            original_inbox, original_pipeline = SERVER.INBOX, SERVER.pipeline
+            processed = []
+            SERVER.INBOX = inbox
+            SERVER.pipeline = lambda wav: processed.append(wav)
+            try:
+                SERVER.complete_passport(session, "memo-42")
+            finally:
+                SERVER.INBOX, SERVER.pipeline = original_inbox, original_pipeline
+            self.assertEqual([path.name for path in processed], ["passport-memo-42.wav"])
+            manifest = __import__("json").loads((session / "manifest.json").read_text())
+            self.assertEqual(manifest["chunks"], ["000001.adpcm", "000002.adpcm"])
+            with SERVER.wave.open(str(processed[0]), "rb") as wav:
+                self.assertEqual(wav.getnframes(), 6)
+
 
 if __name__ == "__main__":
     unittest.main()
