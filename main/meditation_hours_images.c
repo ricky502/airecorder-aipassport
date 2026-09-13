@@ -14,7 +14,11 @@
 #include "assets/meditation_hours/hour_11_pixels.generated"
 
 #define HOUR_IMAGE(N) { \
-    .header = {.cf = LV_COLOR_FORMAT_RGB565, .w = 216, .h = 235}, \
+    .header = { \
+        .magic = LV_IMAGE_HEADER_MAGIC, \
+        .cf = LV_COLOR_FORMAT_RGB565, \
+        .w = 216, .h = 235, .stride = 432, \
+    }, \
     .data_size = sizeof(meditation_hour_ ## N ## _pixels), \
     .data = meditation_hour_ ## N ## _pixels, \
 }
