@@ -14,6 +14,10 @@ static const char *TAG = "inspiration";
 static void on_key(bsp_btn_t button, bsp_btn_ev_t event, void *user)
 {
     (void)user;
+    if (button == BSP_BTN_UP && event == BSP_BTN_LONG) {
+        inspiration_wifi_begin_setup();
+        return;
+    }
     if (event != BSP_BTN_CLICK) return;
     if (button == BSP_BTN_OK) inspiration_recorder_toggle();
     if (button == BSP_BTN_DOWN) inspiration_recorder_stop();

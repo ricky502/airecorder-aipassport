@@ -2,6 +2,7 @@
 
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "esp_http_client.h"
 #include "esp_mac.h"
@@ -40,6 +41,19 @@ esp_err_t inspiration_upload_load_config(void)
         snprintf(s_endpoint, sizeof(s_endpoint), "%s", INSPIRATION_DEFAULT_BACKEND_ENDPOINT);
         return ESP_OK;
     }
+    return err;
+}
+
+esp_err_t inspiration_upload_set_endpoint(const char *endpoint)
+{
+    if (!endpoint || !endpoint[0] || strlen(endpoint) >= sizeof(s_endpoint)) return ESP_ERR_INVALID_ARG;
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open(UPLOAD_NAMESPACE, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) return err;
+    err = nvs_set_str(nvs, UPLOAD_ENDPOINT_KEY, endpoint);
+    if (err == ESP_OK) err = nvs_commit(nvs);
+    nvs_close(nvs);
+    if (err == ESP_OK) snprintf(s_endpoint, sizeof(s_endpoint), "%s", endpoint);
     return err;
 }
 
