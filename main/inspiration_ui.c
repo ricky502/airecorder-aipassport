@@ -174,8 +174,10 @@ static void tick(lv_timer_t *timer)
         lv_label_set_text_fmt(s_status, "JOIN AP: %s", inspiration_wifi_setup_ssid());
         lv_label_set_text_fmt(s_footer, "PWD: %s", inspiration_wifi_setup_password());
         lv_obj_set_style_text_color(s_status, lv_color_hex(AMBER), 0);
+        for (int i = 0; i < 12; i++) lv_obj_add_flag(s_meter[i], LV_OBJ_FLAG_HIDDEN);
         return;
     }
+    for (int i = 0; i < 12; i++) lv_obj_remove_flag(s_meter[i], LV_OBJ_FLAG_HIDDEN);
     if (s_library) {
         render_library();
         return;
