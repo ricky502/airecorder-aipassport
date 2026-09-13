@@ -168,7 +168,9 @@ static void tick(lv_timer_t *timer)
     uint8_t waveform[12] = {0};
     inspiration_recorder_snapshot(&state, &peak);
     inspiration_recorder_waveform(waveform);
-    inspiration_recorder_set_wifi_ready(inspiration_wifi_ready());
+    // READY means an HTTP upload is actively in progress.  Wi-Fi association
+    // and mDNS retries remain invisible so the footer does not flicker.
+    inspiration_recorder_set_wifi_ready(inspiration_recorder_upload_active());
     if (inspiration_wifi_setup_active()) {
         lv_label_set_text(s_top, "PAIR 192.168.4.1");
         lv_label_set_text_fmt(s_status, "JOIN AP: %s", inspiration_wifi_setup_ssid());

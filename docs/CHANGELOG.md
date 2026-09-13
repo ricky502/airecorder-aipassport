@@ -62,3 +62,5 @@
 - Fixed the home-screen Wi-Fi indicator so `READY` is shown only while the
   upload window is active and connected; idle mode now consistently shows
   `OFFLINE`.
+- Clarified `READY` to mean an HTTP upload is actively in progress, avoiding
+  flicker during Wi-Fi association and mDNS retries.

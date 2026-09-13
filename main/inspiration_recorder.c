@@ -35,6 +35,7 @@ static uint32_t s_chunk_samples;
 static FILE *s_chunk_file;
 static bool s_completion_requested;
 static uint32_t s_next_receiver_discovery_ms;
+static volatile bool s_upload_active;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
 static volatile uint8_t s_playback_volume = 70;
@@ -130,7 +131,10 @@ static void service_upload_window(void)
             inspiration_wifi_begin_upload_window();
             return;
         }
-        if (inspiration_upload_complete() == ESP_OK && inspiration_upload_clear_session() == ESP_OK) {
+        s_upload_active = true;
+        esp_err_t complete_err = inspiration_upload_complete();
+        s_upload_active = false;
+        if (complete_err == ESP_OK && inspiration_upload_clear_session() == ESP_OK) {
             s_completion_requested = false;
             inspiration_wifi_end_upload_window();
         } else if (inspiration_upload_configured()) {
@@ -148,7 +152,9 @@ static void service_upload_window(void)
         }
         return;
     }
+    s_upload_active = true;
     esp_err_t err = inspiration_upload_chunk(&chunk);
+    s_upload_active = false;
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
     if (err == ESP_OK && inspiration_chunk_queue_acknowledge(&s_chunks, chunk.sequence)) {
         portENTER_CRITICAL(&s_lock);
@@ -334,6 +340,11 @@ void inspiration_recorder_set_wifi_ready(bool ready)
     portENTER_CRITICAL(&s_lock);
     s_state.wifi_ready = ready;
     portEXIT_CRITICAL(&s_lock);
+}
+
+bool inspiration_recorder_upload_active(void)
+{
+    return s_upload_active;
 }
 
 void inspiration_recorder_clear_stop_indicator(void)
