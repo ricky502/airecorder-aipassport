@@ -153,6 +153,7 @@ static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *da
     }
     if (id == IP_EVENT_STA_GOT_IP) {
         s_ready = true;
+        ESP_LOGI("inspiration_wifi", "家庭 Wi-Fi 已连接，开始上传");
         start_clock_sync();
     }
 }
@@ -194,7 +195,13 @@ esp_err_t inspiration_wifi_begin_upload_window(void)
 {
     if (s_started) return ESP_OK;
     esp_err_t err = esp_wifi_start();
-    if (err == ESP_OK) s_started = true;
+    if (err == ESP_OK) {
+        s_started = true;
+        // STA_START can be delivered before esp_wifi_start() returns. Connect
+        // explicitly as well, so the first upload window cannot miss it.
+        esp_err_t connect_err = esp_wifi_connect();
+        if (connect_err != ESP_OK && connect_err != ESP_ERR_WIFI_CONN) err = connect_err;
+    }
     ESP_LOGI("inspiration_wifi", "上传 Wi-Fi 窗口: %s", esp_err_to_name(err));
     return err;
 }
