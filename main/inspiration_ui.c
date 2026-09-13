@@ -16,7 +16,8 @@
 #define AMBER 0xF6C75A
 #define PANEL 0x173B47
 
-static lv_obj_t *s_home, *s_library, *s_library_text, *s_library_actions, *s_library_panel;
+static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_library_cursor;
+static lv_obj_t *s_library_actions, *s_library_panel;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
@@ -64,11 +65,12 @@ static void refresh_library(void)
 
 static void render_library(void)
 {
-    if (!s_library_text || !s_library_actions) return;
-    char list[320];
+    if (!s_library_title || !s_library_text || !s_library_cursor || !s_library_actions) return;
+    char list[400];
     char actions[160];
-    int offset = snprintf(list, sizeof(list), LV_SYMBOL_AUDIO "  INBOX                         %02u\n", (unsigned)s_library_count);
-    if (!s_library_count) offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "\nNo offline clips.\n");
+    int offset = 0;
+    lv_label_set_text_fmt(s_library_title, LV_SYMBOL_AUDIO "  INBOX                         %02u", (unsigned)s_library_count);
+    if (!s_library_count) offset = snprintf(list, sizeof(list), "No offline clips.\n");
 
     // The upper region is deliberately generous: 10 clip rows plus a header
     // and range marker. The controls are rendered in their own bottom region,
@@ -80,29 +82,32 @@ static void render_library(void)
     }
     size_t end = first + visible_rows;
     if (end > s_library_count) end = s_library_count;
-    for (size_t i = first; i < end && offset > 0 && (size_t)offset < sizeof(list); i++) {
-        offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "%s " LV_SYMBOL_AUDIO "  #%06u        01:00\n",
-                           i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
-    }
-    if (s_library_count > visible_rows && offset > 0 && (size_t)offset < sizeof(list)) {
+    for (size_t i = first; i < end && offset >= 0 && (size_t)offset < sizeof(list); i++) {
         offset += snprintf(list + offset, sizeof(list) - (size_t)offset,
-                           "[%u-%u of %u]\n", (unsigned)(first + 1U),
-                           (unsigned)end, (unsigned)s_library_count);
+                           LV_SYMBOL_AUDIO "  #%06u        01:00\n", (unsigned)s_library_chunks[i]);
+    }
+    if (s_library_count) {
+        int line_height = lv_font_get_line_height(lv_obj_get_style_text_font(s_library_text, LV_PART_MAIN));
+        lv_obj_set_pos(s_library_cursor, 12, 34 + (int)(s_library_selected - first) * line_height);
+        lv_obj_remove_flag(s_library_cursor, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_library_cursor, LV_OBJ_FLAG_HIDDEN);
     }
     if (s_delete_confirm && s_library_count) {
-        snprintf(actions, sizeof(actions), LV_SYMBOL_WARNING "  #%06u\n%s KEEP       %s " LV_SYMBOL_TRASH " DELETE\n" LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " choose     " LV_SYMBOL_OK " confirm",
+        snprintf(actions, sizeof(actions), LV_SYMBOL_WARNING "  #%06u\n%s KEEP\n%s " LV_SYMBOL_TRASH "  DELETE\n" LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " move   " LV_SYMBOL_OK " confirm",
                  (unsigned)s_library_chunks[s_library_selected],
                  s_delete_selected ? " " : ">",
                  s_delete_selected ? ">" : " ");
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(RED), 0);
     } else if (inspiration_recorder_is_playing()) {
-        snprintf(actions, sizeof(actions), LV_SYMBOL_PLAY "                 " LV_SYMBOL_AUDIO "  %u%%\n"
-                 LV_SYMBOL_UP "/" LV_SYMBOL_DOWN "                  " LV_SYMBOL_STOP "  OK\n"
-                 LV_SYMBOL_LEFT "  HOLD UP", (unsigned)inspiration_recorder_playback_volume());
+        snprintf(actions, sizeof(actions), LV_SYMBOL_PLAY "        " LV_SYMBOL_AUDIO "  %u%%\n"
+                 LV_SYMBOL_UP "/" LV_SYMBOL_DOWN "  " LV_SYMBOL_AUDIO "\n"
+                 LV_SYMBOL_STOP "  OK\n" LV_SYMBOL_LEFT "  HOLD UP",
+                 (unsigned)inspiration_recorder_playback_volume());
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(MINT), 0);
     } else {
-        snprintf(actions, sizeof(actions), "%s\n" LV_SYMBOL_PLAY "  OK       " LV_SYMBOL_TRASH "  HOLD OK\n"
-                 LV_SYMBOL_LEFT "  HOLD UP", s_library_notice ? s_library_notice : "OFFLINE");
+        snprintf(actions, sizeof(actions), LV_SYMBOL_PLAY "  OK\n" LV_SYMBOL_TRASH "  HOLD OK\n"
+                 LV_SYMBOL_LEFT "  HOLD UP");
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
     }
     lv_label_set_text(s_library_text, list);
@@ -212,9 +217,16 @@ void inspiration_ui_open_library(void)
     lv_obj_set_style_bg_color(s_library, lv_color_hex(INK), 0);
     lv_obj_set_style_border_width(s_library, 0, 0);
     lv_obj_set_style_pad_all(s_library, 0, 0);
+    s_library_title = lv_label_create(s_library);
+    lv_obj_set_pos(s_library_title, 12, 8);
+    lv_obj_set_size(s_library_title, 216, 20);
+    lv_obj_set_style_text_color(s_library_title, lv_color_hex(LIME), 0);
+    s_library_cursor = lv_label_create(s_library);
+    lv_label_set_text(s_library_cursor, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(s_library_cursor, lv_color_hex(MINT), 0);
     s_library_text = lv_label_create(s_library);
-    lv_obj_set_pos(s_library_text, 12, 8);
-    lv_obj_set_size(s_library_text, 216, 210);
+    lv_obj_set_pos(s_library_text, 34, 34);
+    lv_obj_set_size(s_library_text, 190, 184);
     lv_label_set_long_mode(s_library_text, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_text, lv_color_hex(LIME), 0);
     s_library_panel = box(s_library, 8, 226, 224, 88, PANEL);
@@ -237,7 +249,9 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         lv_screen_load(s_home);
         lv_obj_delete(s_library);
         s_library = NULL;
+        s_library_title = NULL;
         s_library_text = NULL;
+        s_library_cursor = NULL;
         s_library_actions = NULL;
         s_library_panel = NULL;
         return true;
