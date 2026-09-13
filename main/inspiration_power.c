@@ -16,6 +16,7 @@
 #define POWER_OFF_AFTER_MS       (3U * 60U * 1000U)
 #define POWER_SLEEP_AFTER_MS     (10U * 60U * 1000U)
 #define POWER_DIM_LEVEL          20U
+#define POWER_RECORDING_LEVEL    18U
 #define POWER_BUTTON_GPIO        0
 
 static const char *TAG = "inspiration_power";
@@ -42,13 +43,17 @@ void inspiration_power_note_activity(void)
     bsp_display_backlight(100);
 }
 
-static bool recorder_busy(void)
+static bool recorder_active(void)
 {
     inspiration_state_t state;
     inspiration_recorder_snapshot(&state, NULL);
     return state.phase == INSPIRATION_RECORDING ||
-           state.phase == INSPIRATION_PAUSED ||
-           inspiration_recorder_is_playing();
+           state.phase == INSPIRATION_PAUSED;
+}
+
+static bool recorder_busy(void)
+{
+    return recorder_active() || inspiration_recorder_is_playing();
 }
 
 static void enter_light_sleep(void)
@@ -77,7 +82,18 @@ static void power_task(void *unused)
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(1000));
         uint32_t elapsed = esp_log_timestamp() - last_activity();
-        if (recorder_busy()) {
+        if (recorder_active()) {
+            // Recording is normally hands-free. Keep a visible low-light
+            // status screen rather than treating an active recording as user
+            // activity and holding the backlight at full power.
+            if (s_stage != 3) {
+                bsp_display_backlight(POWER_RECORDING_LEVEL);
+                s_stage = 3;
+                ESP_LOGI(TAG, "录音中: 背光保持 %u%%", POWER_RECORDING_LEVEL);
+            }
+            continue;
+        }
+        if (inspiration_recorder_is_playing()) {
             if (s_stage != 0) inspiration_power_note_activity();
             continue;
         }
