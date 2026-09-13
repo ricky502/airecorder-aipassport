@@ -259,7 +259,13 @@ void inspiration_ui_start(void)
     s_illustration_box = box(screen, 12, 38, 216, 216, INK);
     lv_obj_set_style_clip_corner(s_illustration_box, true, 0);
     s_illustration = lv_image_create(s_illustration_box);
-    lv_image_set_src(s_illustration, &meditation_hour_images[0]);
+    // Pick the time frame before the first render.  Starting with frame 0 and
+    // correcting it in the first 400 ms tick caused a visible boot flash.
+    time_t now = time(NULL);
+    struct tm local = {0};
+    if (now > 1704067200 && localtime_r(&now, &local)) s_hour_frame = local.tm_hour / 2;
+    else s_hour_frame = 0;
+    lv_image_set_src(s_illustration, &meditation_hour_images[s_hour_frame]);
     // Full-size source artwork avoids scaler bleed at the card's lower edge.
     // Each source frame is square. Keep the native aspect ratio so circular
     // sun/moon details remain circular on the portrait display.
