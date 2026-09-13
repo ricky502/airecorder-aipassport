@@ -13,6 +13,7 @@
 #include "esp_wifi.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lwip/ip4_addr.h"
 #include "inspiration_config.h"
 #include "inspiration_upload.h"
 #include "nvs_flash.h"
@@ -24,6 +25,7 @@ static bool s_setup_starting;
 static bool s_setup_active;
 static char s_setup_ssid[33];
 static httpd_handle_t s_setup_server;
+static esp_netif_t *s_setup_netif;
 #define SETUP_AP_PASSWORD "inspireme"
 
 static const char SETUP_PAGE[] =
@@ -40,6 +42,14 @@ static esp_err_t setup_page_handler(httpd_req_t *request)
 {
     httpd_resp_set_type(request, "text/html; charset=utf-8");
     return httpd_resp_send(request, SETUP_PAGE, HTTPD_RESP_USE_STRLEN);
+}
+
+// Phones sometimes probe one of these URLs before showing a captive portal.
+// Returning the setup page here also makes the flow reliable when the phone
+// reports that this AP has no internet connection.
+static esp_err_t setup_probe_handler(httpd_req_t *request)
+{
+    return setup_page_handler(request);
 }
 
 static esp_err_t setup_save_handler(httpd_req_t *request)
@@ -87,16 +97,31 @@ static void setup_task(void *unused)
     ap.ap.channel = 1;
     ap.ap.max_connection = 2;
     ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    if (s_setup_netif) {
+        esp_netif_ip_info_t ip = {0};
+        IP4_ADDR(&ip.ip, 192, 168, 4, 1);
+        IP4_ADDR(&ip.gw, 192, 168, 4, 1);
+        IP4_ADDR(&ip.netmask, 255, 255, 255, 0);
+        esp_netif_dhcps_stop(s_setup_netif);
+        esp_netif_set_ip_info(s_setup_netif, &ip);
+        esp_netif_dhcps_start(s_setup_netif);
+    }
     if (esp_wifi_set_mode(WIFI_MODE_APSTA) == ESP_OK &&
         esp_wifi_set_config(WIFI_IF_AP, &ap) == ESP_OK && esp_wifi_start() == ESP_OK) {
         s_started = true;
         httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-        config.max_uri_handlers = 2;
+        config.max_uri_handlers = 6;
         if (httpd_start(&s_setup_server, &config) == ESP_OK) {
             httpd_uri_t page = {.uri = "/", .method = HTTP_GET, .handler = setup_page_handler};
             httpd_uri_t save = {.uri = "/save", .method = HTTP_POST, .handler = setup_save_handler};
             httpd_register_uri_handler(s_setup_server, &page);
             httpd_register_uri_handler(s_setup_server, &save);
+            httpd_uri_t probe1 = {.uri = "/generate_204", .method = HTTP_GET, .handler = setup_probe_handler};
+            httpd_uri_t probe2 = {.uri = "/hotspot-detect.html", .method = HTTP_GET, .handler = setup_probe_handler};
+            httpd_uri_t probe3 = {.uri = "/connecttest.txt", .method = HTTP_GET, .handler = setup_probe_handler};
+            httpd_register_uri_handler(s_setup_server, &probe1);
+            httpd_register_uri_handler(s_setup_server, &probe2);
+            httpd_register_uri_handler(s_setup_server, &probe3);
             s_setup_active = true;
         }
     }
@@ -147,7 +172,8 @@ esp_err_t inspiration_wifi_init(void)
     // the AP netif is required for its default 192.168.4.1 address and DHCP
     // server; STA-only initialization leaves clients connected but unable to
     // open the configuration page.
-    if (!esp_netif_create_default_wifi_ap()) return ESP_ERR_NO_MEM;
+    s_setup_netif = esp_netif_create_default_wifi_ap();
+    if (!s_setup_netif) return ESP_ERR_NO_MEM;
     err = mdns_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
