@@ -21,7 +21,7 @@
 static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_library_cursor;
 static lv_obj_t *s_library_actions, *s_library_panel;
 static lv_obj_t *s_player_icon, *s_player_volume, *s_player_track;
-static lv_obj_t *s_player_fill, *s_player_knob, *s_player_controls;
+static lv_obj_t *s_player_fill, *s_player_knob, *s_player_time, *s_player_controls;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
@@ -110,18 +110,26 @@ static void render_library(void)
     bool playing = inspiration_recorder_is_playing();
     if (playing) {
         uint8_t volume = inspiration_recorder_playback_volume();
-        int fill_width = (int)(volume * 116U / 100U);
+        uint32_t elapsed_ms = 0;
+        uint32_t duration_ms = 0;
+        inspiration_recorder_playback_progress(&elapsed_ms, &duration_ms);
+        int fill_width = duration_ms ? (int)(elapsed_ms * 116U / duration_ms) : 0;
         if (fill_width < 3) fill_width = 3;
+        if (fill_width > 116) fill_width = 116;
         lv_obj_add_flag(s_library_actions, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_icon, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_volume, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_fill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_knob, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_player_time, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_player_controls, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_width(s_player_fill, fill_width);
         lv_obj_set_x(s_player_knob, 52 + fill_width);
         lv_label_set_text_fmt(s_player_volume, "%u%%", (unsigned)volume);
+        lv_label_set_text_fmt(s_player_time, "%02u:%02u / %02u:%02u",
+                              (unsigned)(elapsed_ms / 60000U), (unsigned)((elapsed_ms / 1000U) % 60U),
+                              (unsigned)(duration_ms / 60000U), (unsigned)((duration_ms / 1000U) % 60U));
     } else {
         lv_obj_remove_flag(s_library_actions, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_player_icon, LV_OBJ_FLAG_HIDDEN);
@@ -129,6 +137,7 @@ static void render_library(void)
         lv_obj_add_flag(s_player_track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_player_fill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_player_knob, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_player_time, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_player_controls, LV_OBJ_FLAG_HIDDEN);
     }
     if (s_delete_confirm && s_library_count) {
@@ -268,8 +277,8 @@ void inspiration_ui_open_library(void)
     lv_obj_set_size(s_library_actions, 200, 68);
     lv_label_set_long_mode(s_library_actions, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
-    // Playback is deliberately its own fixed layout: one state icon, one
-    // horizontal volume control, and one row of physical-key affordances.
+    // Playback is deliberately its own fixed layout: the bar is real elapsed
+    // time, while volume stays as a fixed percentage at the upper right.
     s_player_icon = lv_label_create(s_library_panel);
     lv_label_set_text(s_player_icon, LV_SYMBOL_PLAY);
     lv_obj_set_pos(s_player_icon, 14, 12);
@@ -284,16 +293,20 @@ void inspiration_ui_open_library(void)
     lv_obj_set_style_radius(s_player_fill, 3, 0);
     s_player_knob = box(s_library_panel, 55, 18, 8, 8, LIME);
     lv_obj_set_style_radius(s_player_knob, 4, 0);
+    s_player_time = lv_label_create(s_library_panel);
+    lv_obj_set_pos(s_player_time, 56, 30);
+    lv_obj_set_style_text_color(s_player_time, lv_color_hex(MINT), 0);
     s_player_controls = lv_label_create(s_library_panel);
-    lv_obj_set_pos(s_player_controls, 56, 42);
+    lv_obj_set_pos(s_player_controls, 56, 48);
     lv_obj_set_size(s_player_controls, 150, 40);
-    lv_label_set_text(s_player_controls, LV_SYMBOL_UP "/" LV_SYMBOL_DOWN "   " LV_SYMBOL_STOP "  OK\n" LV_SYMBOL_LEFT "  HOLD UP");
+    lv_label_set_text(s_player_controls, LV_SYMBOL_UP "/" LV_SYMBOL_DOWN "        " LV_SYMBOL_STOP "  OK\n" LV_SYMBOL_LEFT "  HOLD UP");
     lv_obj_set_style_text_color(s_player_controls, lv_color_hex(MINT), 0);
     lv_obj_add_flag(s_player_icon, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_player_volume, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_player_track, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_player_fill, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_player_knob, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_player_time, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_player_controls, LV_OBJ_FLAG_HIDDEN);
     render_library();
     lv_screen_load(s_library);
@@ -318,6 +331,7 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         s_player_track = NULL;
         s_player_fill = NULL;
         s_player_knob = NULL;
+        s_player_time = NULL;
         s_player_controls = NULL;
         return true;
     }

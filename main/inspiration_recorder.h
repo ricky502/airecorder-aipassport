@@ -3,8 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <stdint.h>
-
 #include "esp_err.h"
 #include "inspiration_state.h"
 
@@ -20,6 +18,7 @@ void inspiration_recorder_stop_playback(void);
 bool inspiration_recorder_is_playing(void);
 uint8_t inspiration_recorder_adjust_playback_volume(int delta);
 uint8_t inspiration_recorder_playback_volume(void);
+void inspiration_recorder_playback_progress(uint32_t *elapsed_ms_out, uint32_t *duration_ms_out);
 bool inspiration_recorder_delete_chunk(uint32_t sequence);
 
 // Pause background transfers while the local library is open, so a selected

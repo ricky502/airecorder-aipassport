@@ -37,6 +37,8 @@ static bool s_completion_requested;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
 static volatile uint8_t s_playback_volume = 70;
+static volatile uint32_t s_playback_elapsed_ms;
+static volatile uint32_t s_playback_duration_ms;
 static volatile bool s_library_active;
 static const char *TAG = "inspiration_recorder";
 
@@ -246,6 +248,14 @@ static void playback_task(void *argument)
     uint8_t applied_volume = 0;
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) == ESP_OK &&
         inspiration_storage_open_chunk_read(sequence, &file) == ESP_OK) {
+        if (fseek(file, 0, SEEK_END) == 0) {
+            long bytes = ftell(file);
+            if (bytes > 0) {
+                s_playback_duration_ms = (uint32_t)(bytes / RECORDER_PACKET_BYTES) *
+                                         (RECORDER_BLOCK_SAMPLES * 1000U / INSPIRATION_SAMPLE_RATE_HZ);
+            }
+            rewind(file);
+        }
         while (!s_stop_playback && fread(packet, 1, sizeof(packet), file) == sizeof(packet)) {
             // Button events change the requested level; apply it here so the
             // codec is only touched by the audio task while it is playing.
@@ -258,6 +268,7 @@ static void playback_task(void *argument)
             if (!inspiration_adpcm_decode_packet(packet, sizeof(packet), pcm, RECORDER_BLOCK_SAMPLES, &samples) ||
                 samples != RECORDER_BLOCK_SAMPLES || bsp_audio_write(pcm, samples * sizeof(pcm[0])) != ESP_OK) break;
             packets++;
+            s_playback_elapsed_ms = packets * (RECORDER_BLOCK_SAMPLES * 1000U / INSPIRATION_SAMPLE_RATE_HZ);
         }
     }
     ESP_LOGI(TAG, "playback chunk=%lu packets=%u", (unsigned long)sequence, packets);
@@ -332,6 +343,8 @@ bool inspiration_recorder_play_chunk(uint32_t sequence)
 {
     if (!sequence || s_playing || state_is_active()) return false;
     s_stop_playback = false;
+    s_playback_elapsed_ms = 0;
+    s_playback_duration_ms = 0;
     s_playing = xTaskCreate(playback_task, "inspiration_play", 4096, (void *)(uintptr_t)sequence, 3, NULL) == pdPASS;
     return s_playing;
 }
@@ -349,6 +362,12 @@ uint8_t inspiration_recorder_adjust_playback_volume(int delta)
 }
 
 uint8_t inspiration_recorder_playback_volume(void) { return s_playback_volume; }
+
+void inspiration_recorder_playback_progress(uint32_t *elapsed_ms_out, uint32_t *duration_ms_out)
+{
+    if (elapsed_ms_out) *elapsed_ms_out = s_playback_elapsed_ms;
+    if (duration_ms_out) *duration_ms_out = s_playback_duration_ms;
+}
 
 bool inspiration_recorder_delete_chunk(uint32_t sequence)
 {
