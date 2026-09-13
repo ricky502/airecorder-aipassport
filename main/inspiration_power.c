@@ -59,6 +59,14 @@ static bool recorder_busy(void)
 static void enter_light_sleep(void)
 {
     if (recorder_busy() || inspiration_wifi_ready()) return;
+    // GPIO0 is also the ADC ladder for all three keys. Do not arm a
+    // level-sensitive wake while the line is already low; otherwise the
+    // chip can wake immediately and look as if it never slept.
+    if (gpio_get_level(POWER_BUTTON_GPIO) == 0) {
+        bsp_display_backlight(POWER_DIM_LEVEL);
+        s_stage = 1;
+        return;
+    }
     // If Wi-Fi is still associating, close that window before sleeping so the
     // radio is not left powered while the device is idle.
     inspiration_wifi_end_upload_window();
@@ -71,9 +79,12 @@ static void enter_light_sleep(void)
     esp_light_sleep_start();
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     gpio_wakeup_disable(POWER_BUTTON_GPIO);
-    bsp_display_backlight(100);
-    inspiration_power_note_activity();
-    ESP_LOGI(TAG, "轻睡眠唤醒");
+    // A GPIO wake is not proof that a valid key gesture happened: the ADC
+    // ladder can briefly cross the low-level threshold. Stay dim until the
+    // debounced button callback confirms a real click or long press.
+    bsp_display_backlight(POWER_DIM_LEVEL);
+    s_stage = 1;
+    ESP_LOGI(TAG, "轻睡眠唤醒，等待按键确认");
 }
 
 static void power_task(void *unused)

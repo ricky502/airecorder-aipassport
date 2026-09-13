@@ -47,7 +47,12 @@ static void key_task(void *unused)
 static void on_key(bsp_btn_t button, bsp_btn_ev_t event, void *user)
 {
     (void)user;
-    inspiration_power_note_activity();
+    // PRESS_DOWN can be produced while the ADC ladder is settling, especially
+    // after GPIO wake. Count only completed gestures as user activity so a
+    // spurious threshold crossing cannot keep the display awake forever.
+    if (event == BSP_BTN_CLICK || event == BSP_BTN_LONG || event == BSP_BTN_DOUBLE) {
+        inspiration_power_note_activity();
+    }
     if (!s_key_events) return;
     const key_event_t key = { .button = button, .event = event };
     xQueueSend(s_key_events, &key, 0);
