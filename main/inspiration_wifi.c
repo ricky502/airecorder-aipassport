@@ -143,6 +143,11 @@ esp_err_t inspiration_wifi_init(void)
     err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     if (!esp_netif_create_default_wifi_sta()) return ESP_ERR_NO_MEM;
+    // The setup flow uses the ESP32-C3 as a temporary access point. Creating
+    // the AP netif is required for its default 192.168.4.1 address and DHCP
+    // server; STA-only initialization leaves clients connected but unable to
+    // open the configuration page.
+    if (!esp_netif_create_default_wifi_ap()) return ESP_ERR_NO_MEM;
     err = mdns_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
