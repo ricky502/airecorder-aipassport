@@ -251,8 +251,10 @@ void inspiration_ui_start(void)
     s_illustration = lv_image_create(screen);
     lv_image_set_src(s_illustration, &meditation_hour_images[0]);
     // Full-size source artwork avoids scaler bleed at the card's lower edge.
-    lv_obj_set_size(s_illustration, 216, 235);
-    lv_obj_set_pos(s_illustration, 12, 29);
+    // Each source frame is square. Keep the native aspect ratio so circular
+    // sun/moon details remain circular on the portrait display.
+    lv_obj_set_size(s_illustration, 216, 216);
+    lv_obj_set_pos(s_illustration, 12, 38);
     s_status = lv_label_create(screen);
     lv_obj_set_pos(s_status, 13, 266);
     // A slim, deliberately secondary waveform: audio state should be legible

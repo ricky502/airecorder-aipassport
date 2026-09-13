@@ -5,6 +5,7 @@
 
 #include "esp_event.h"
 #include "esp_http_server.h"
+#include "esp_log.h"
 #include "esp_mac.h"
 #include "mdns.h"
 #include "esp_netif.h"
@@ -109,6 +110,7 @@ static void setup_task(void *unused)
     if (esp_wifi_set_mode(WIFI_MODE_APSTA) == ESP_OK &&
         esp_wifi_set_config(WIFI_IF_AP, &ap) == ESP_OK && esp_wifi_start() == ESP_OK) {
         s_started = true;
+        ESP_LOGI("inspiration_wifi", "配网 AP 已启动: %s / 192.168.4.1", (char *)ap.ap.ssid);
         httpd_config_t config = HTTPD_DEFAULT_CONFIG();
         config.max_uri_handlers = 6;
         if (httpd_start(&s_setup_server, &config) == ESP_OK) {
@@ -193,6 +195,7 @@ esp_err_t inspiration_wifi_begin_upload_window(void)
     if (s_started) return ESP_OK;
     esp_err_t err = esp_wifi_start();
     if (err == ESP_OK) s_started = true;
+    ESP_LOGI("inspiration_wifi", "上传 Wi-Fi 窗口: %s", esp_err_to_name(err));
     return err;
 }
 
