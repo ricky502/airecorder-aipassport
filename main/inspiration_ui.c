@@ -49,7 +49,7 @@ static void tick(lv_timer_t *timer)
         int height = (state.phase == INSPIRATION_RECORDING) ?
             2 + (int)((peak >> 10) + (uint16_t)(i * 3)) % 19 : 2;
         lv_obj_set_height(s_meter[i], height);
-        lv_obj_set_y(s_meter[i], 270 - height);
+        lv_obj_set_y(s_meter[i], 276 - height);
         lv_obj_set_style_bg_color(s_meter[i], lv_color_hex(color), 0);
     }
     int battery = bsp_battery_soc();
@@ -111,17 +111,17 @@ void inspiration_ui_start(void)
     lv_obj_t *illustration = lv_image_create(screen);
     lv_image_set_src(illustration, &meditation_clock_image);
     lv_obj_set_pos(illustration, 12, 29);
-    s_tint = box(screen, 12, 29, 216, 203, 0x102A5C);
+    s_tint = box(screen, 12, 29, 216, 217, 0x102A5C);
     lv_obj_set_style_bg_opa(s_tint, LV_OPA_TRANSP, 0);
     s_orbit = box(screen, 26, 77, 6, 6, 0xFFF3A6);
     lv_obj_set_style_radius(s_orbit, LV_RADIUS_CIRCLE, 0);
     s_status = lv_label_create(screen);
-    lv_obj_set_pos(s_status, 13, 241);
+    lv_obj_set_pos(s_status, 13, 250);
     // A slim, deliberately secondary waveform: audio state should be legible
     // without competing with the main visual card.
-    for (int i = 0; i < 12; i++) s_meter[i] = box(screen, 79 + i * 6, 268, 3, 2, MINT);
+    for (int i = 0; i < 12; i++) s_meter[i] = box(screen, 79 + i * 6, 276, 3, 2, MINT);
     s_footer = lv_label_create(screen);
-    lv_obj_set_pos(s_footer, 12, 293);
+    lv_obj_set_pos(s_footer, 12, 284);
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
     lv_screen_load(screen);
     lv_timer_create(tick, 120, NULL);
