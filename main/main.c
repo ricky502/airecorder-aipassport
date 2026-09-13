@@ -32,8 +32,13 @@ static void key_task(void *unused)
             inspiration_wifi_begin_setup();
             continue;
         }
+        // OK is intentionally long-press only on the home screen. A short
+        // press is too easy to trigger accidentally while carrying the card.
+        if (key.button == BSP_BTN_OK && key.event == BSP_BTN_LONG) {
+            inspiration_recorder_toggle();
+            continue;
+        }
         if (key.event != BSP_BTN_CLICK) continue;
-        if (key.button == BSP_BTN_OK) inspiration_recorder_toggle();
         if (key.button == BSP_BTN_DOWN) inspiration_recorder_stop();
         if (key.button == BSP_BTN_UP && bsp_lvgl_lock(200)) {
             inspiration_ui_open_library();

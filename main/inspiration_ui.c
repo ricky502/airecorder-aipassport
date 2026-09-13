@@ -22,7 +22,7 @@ static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_libra
 static lv_obj_t *s_library_actions, *s_library_panel, *s_delete_cursor;
 static lv_obj_t *s_player_icon, *s_player_volume, *s_player_track;
 static lv_obj_t *s_player_fill, *s_player_knob, *s_player_time, *s_player_controls;
-static lv_obj_t *s_top, *s_battery, *s_status, *s_footer, *s_illustration, *s_illustration_box, *s_meter[12];
+static lv_obj_t *s_top, *s_battery, *s_status, *s_footer, *s_cache, *s_illustration, *s_illustration_box, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
@@ -173,11 +173,13 @@ static void tick(lv_timer_t *timer)
         lv_label_set_text(s_top, "PAIR 192.168.4.1");
         lv_label_set_text_fmt(s_status, "JOIN AP: %s", inspiration_wifi_setup_ssid());
         lv_label_set_text_fmt(s_footer, "PWD: %s", inspiration_wifi_setup_password());
+        lv_obj_add_flag(s_cache, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(s_status, lv_color_hex(AMBER), 0);
         for (int i = 0; i < 12; i++) lv_obj_add_flag(s_meter[i], LV_OBJ_FLAG_HIDDEN);
         return;
     }
     for (int i = 0; i < 12; i++) lv_obj_remove_flag(s_meter[i], LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_cache, LV_OBJ_FLAG_HIDDEN);
     if (s_library) {
         render_library();
         return;
@@ -210,9 +212,8 @@ static void tick(lv_timer_t *timer)
         if (display_battery > 100U) display_battery = 100U;
         snprintf(battery_text, sizeof(battery_text), "%u%%", display_battery);
     }
-    lv_label_set_text_fmt(s_footer, "WIFI %s    CACHE %02u:%02u",
-                          state.wifi_ready ? "READY" : "OFFLINE",
-                          remaining / 60U, remaining % 60U);
+    lv_label_set_text_fmt(s_footer, "WIFI %s", state.wifi_ready ? "READY" : "OFFLINE");
+    lv_label_set_text_fmt(s_cache, "CACHE %02u:%02u", remaining / 60U, remaining % 60U);
     time_t now = time(NULL);
     struct tm local = {0};
     if (now > 1704067200 && localtime_r(&now, &local)) {
@@ -270,6 +271,11 @@ void inspiration_ui_start(void)
     s_footer = lv_label_create(screen);
     lv_obj_set_pos(s_footer, 12, 284);
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
+    s_cache = lv_label_create(screen);
+    lv_obj_set_pos(s_cache, 126, 284);
+    lv_obj_set_size(s_cache, 102, 16);
+    lv_obj_set_style_text_align(s_cache, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(s_cache, lv_color_hex(LIME), 0);
     lv_screen_load(screen);
     lv_timer_create(tick, 400, NULL);
 }
