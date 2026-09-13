@@ -21,7 +21,10 @@ Passport on the same LAN can discover it without a fixed computer IP. The
 receiver identity is stored in `AI_REC_ROOT/receiver.id` and is ignored by
 Git. `AI_REC_SERVICE_NAME` changes the advertised name and
 `AI_REC_RECEIVER_ID` can explicitly set the identity. `AI_REC_AGENT_WEBHOOK` is optional. When set, the service POSTs one JSON
-recording event to that URL after it has durably stored the audio.
+recording event to that URL after transcription and formatting. `AI_REC_AGENT_TOKEN` adds Bearer
+authentication. Each event includes `X-Idempotency-Key`; retries are safe. A recording is marked
+complete only after at least one configured Feishu destination accepts it. If no destination is
+configured, or delivery fails, the source WAV stays in `AI_REC_ROOT/inbox`.
 
 ## Compatible routes
 
@@ -41,5 +44,6 @@ POST /v1/passport/sessions/<session>/complete
 
 The session manifest is the stable hand-off to a single shared AI/Feishu
 pipeline. It identifies the source device, codec, local audio location, and
-chunk ordering. The agent adapter is deliberately separate from transport so
+chunk ordering. Each stored chunk may contain multiple ADPCM packets; the receiver decodes all
+packets before building the WAV. The agent adapter is deliberately separate from transport so
 credentials never enter firmware or source control.

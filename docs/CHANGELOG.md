@@ -6,6 +6,8 @@
 
 ## Unreleased
 
+- Fixed Passport rolling-chunk decoding so concatenated IMA-ADPCM packets are reconstructed into WAV; added Feishu Agent webhook delivery with Bearer auth, idempotency keys, retries, and safe local retention until a destination accepts the recording.
+
 - Started the Inspiration Recorder project: added a host-tested recording state
   machine and a dependency-free local inbox that accepts both the existing
   Cardputer WAV route and ordered AI Passport IMA-ADPCM sessions. Agent

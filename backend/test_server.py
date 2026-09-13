@@ -6,6 +6,7 @@ import importlib.util
 import struct
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -27,6 +28,10 @@ class PassportAdpcmTests(unittest.TestCase):
         packet = struct.pack("<hBBI", 0, 0, 0, 3)
         with self.assertRaises(ValueError):
             SERVER.decode_adpcm_packet(packet)
+
+    def test_decodes_concatenated_packets_in_one_chunk(self):
+        packet = struct.pack("<hBBI", 0, 0, 0, 3) + bytes([0x87])
+        self.assertEqual(len(SERVER.decode_adpcm_stream(packet + packet)), 12)
 
     def test_creates_8khz_mono_wav(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -68,6 +73,30 @@ class PassportAdpcmTests(unittest.TestCase):
             self.assertEqual(manifest["chunks"], ["000001.adpcm", "000002.adpcm"])
             with SERVER.wave.open(str(processed[0]), "rb") as wav:
                 self.assertEqual(wav.getnframes(), 6)
+
+    def test_agent_webhook_sends_json_with_idempotency_key(self):
+        class Response:
+            status = 202
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self, _size):
+                return b"ok"
+
+        with tempfile.TemporaryDirectory() as directory, \
+             mock.patch.object(SERVER, "ROOT", Path(directory)), \
+             mock.patch.object(SERVER, "AGENT_WEBHOOK", "https://agent.example/hook"), \
+             mock.patch.object(SERVER, "AGENT_TOKEN", "secret"), \
+             mock.patch.object(SERVER.urllib.request, "urlopen", return_value=Response()) as urlopen:
+            self.assertTrue(SERVER.send_agent_event({"recording_id": "memo-1", "body": "hello"}))
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_header("X-idempotency-key"), "memo-1")
+        self.assertEqual(request.get_header("Authorization"), "Bearer secret")
+        self.assertEqual(__import__("json").loads(request.data), {"recording_id": "memo-1", "body": "hello"})
 
 
 if __name__ == "__main__":

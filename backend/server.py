@@ -33,6 +33,10 @@ PROCESSED = ROOT / "processed"
 PASSPORT = ROOT / "passport"
 PORT = int(os.environ.get("AI_REC_PORT", "8787"))
 CHAT_ID = os.environ.get("AI_REC_CHAT_ID", "")
+AGENT_WEBHOOK = os.environ.get("AI_REC_AGENT_WEBHOOK", "").strip()
+AGENT_TOKEN = os.environ.get("AI_REC_AGENT_TOKEN", "").strip()
+AGENT_TIMEOUT = int(os.environ.get("AI_REC_AGENT_TIMEOUT", "30"))
+AGENT_RETRIES = max(1, int(os.environ.get("AI_REC_AGENT_RETRIES", "3")))
 SERVICE_NAME = os.environ.get("AI_REC_SERVICE_NAME", "AI Passport Receiver")
 MAX_CHUNK_BYTES = 768 * 1024
 MAX_LEGACY_BYTES = 32 * 1024 * 1024
@@ -266,6 +270,37 @@ def send_lark(markdown: str) -> bool:
     return ok
 
 
+def send_agent_event(event: dict) -> bool:
+    """Deliver one finalized recording event to the configured Feishu Agent."""
+    if not AGENT_WEBHOOK:
+        log("agent send skipped: AI_REC_AGENT_WEBHOOK not set")
+        return False
+    body = json.dumps(event, ensure_ascii=False).encode("utf-8")
+    recording_id = str(event.get("recording_id", "unknown"))
+    for attempt in range(1, AGENT_RETRIES + 1):
+        request = urllib.request.Request(AGENT_WEBHOOK, data=body, method="POST")
+        request.add_header("Content-Type", "application/json; charset=utf-8")
+        request.add_header("Accept", "application/json")
+        request.add_header("X-Idempotency-Key", recording_id)
+        if AGENT_TOKEN:
+            request.add_header("Authorization", f"Bearer {AGENT_TOKEN}")
+        try:
+            with urllib.request.urlopen(request, timeout=AGENT_TIMEOUT) as response:
+                response.read(1024)
+                status = response.status
+            if 200 <= status < 300:
+                log(f"agent send ok recording={recording_id} status={status}")
+                return True
+            log(f"agent send failed recording={recording_id} status={status} attempt={attempt}")
+        except urllib.error.HTTPError as error:
+            log(f"agent send HTTP {error.code} recording={recording_id} attempt={attempt}")
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            log(f"agent send network error recording={recording_id} attempt={attempt}: {error}")
+        if attempt < AGENT_RETRIES:
+            time.sleep(min(2 ** (attempt - 1), 8))
+    return False
+
+
 def pipeline(wav_path: Path) -> None:
     tag = wav_path.name
     try:
@@ -281,7 +316,27 @@ def pipeline(wav_path: Path) -> None:
         header = f"{emoji} **{label} · {title}** · {tag}" if title else f"{emoji} **{label}** · {tag}"
         markdown = (f"{header}\n\n{summary}\n\n<details>原始转写：{transcript[:500]}</details>\n"
                     f"<font color='grey'>时长约 {wav_duration_seconds(wav_path)}s · 音频: {wav_path}</font>")
-        send_lark(markdown)
+        event = {
+            "schema": 1,
+            "event": "recording.ready",
+            "recording_id": Path(tag).stem,
+            "source": "ai-passport" if tag.startswith("passport-") else "cardputer",
+            "audio_path": str(wav_path),
+            "duration_seconds": wav_duration_seconds(wav_path),
+            "transcript": transcript,
+            "type": kind,
+            "title": title,
+            "body": summary,
+            "markdown": markdown,
+            "received_at": int(time.time()),
+        }
+        agent_ok = send_agent_event(event)
+        lark_ok = send_lark(markdown)
+        if (AGENT_WEBHOOK or CHAT_ID) and not (agent_ok or lark_ok):
+            raise RuntimeError("all configured Feishu destinations failed; recording kept locally")
+        if not AGENT_WEBHOOK and not CHAT_ID:
+            log(f"pipeline kept: no Feishu destination configured for {tag}")
+            return
         (PROCESSED / f"{tag}.md").write_text(
             f"# {tag}\n类型: {kind} ({label})\n标题: {title}\n\n{summary}\n\n## 转写原文\n{transcript}\n",
             encoding="utf-8")
@@ -349,6 +404,22 @@ def decode_adpcm_packet(packet: bytes) -> bytes:
     return samples.tobytes()
 
 
+def decode_adpcm_stream(payload: bytes) -> bytes:
+    """Decode a stored chunk containing concatenated ADPCM packets."""
+    pcm = bytearray()
+    offset = 0
+    while offset < len(payload):
+        if len(payload) - offset < 8:
+            raise ValueError("ADPCM stream has a truncated packet header")
+        sample_count = struct.unpack_from("<I", payload, offset + 4)[0]
+        packet_bytes = 8 + sample_count // 2
+        if sample_count == 0 or offset + packet_bytes > len(payload):
+            raise ValueError("ADPCM stream has a truncated packet")
+        pcm.extend(decode_adpcm_packet(payload[offset:offset + packet_bytes]))
+        offset += packet_bytes
+    return bytes(pcm)
+
+
 def wav_duration_seconds(path: Path) -> int:
     with wave.open(str(path), "rb") as source:
         return source.getnframes() // max(1, source.getframerate())
@@ -365,7 +436,7 @@ def passport_to_wav(session_dir: Path, recording_id: str) -> Path:
         output.setsampwidth(2)
         output.setframerate(8000)
         for chunk in chunks:
-            output.writeframes(decode_adpcm_packet(chunk.read_bytes()))
+            output.writeframes(decode_adpcm_stream(chunk.read_bytes()))
     temp.replace(target)
     return target
 
