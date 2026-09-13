@@ -2,20 +2,38 @@
 
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_sntp.h"
 #include "esp_wifi.h"
 #include "nvs_flash.h"
 
 static bool s_ready;
 static bool s_started;
+static bool s_sntp_started;
+
+static void start_clock_sync(void)
+{
+    if (s_sntp_started) return;
+    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
+    esp_sntp_setservername(0, "ntp.aliyun.com");
+    esp_sntp_setservername(1, "pool.ntp.org");
+    esp_sntp_init();
+    s_sntp_started = true;
+}
 
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     (void)arg; (void)base; (void)data;
     if (id == WIFI_EVENT_STA_START || id == WIFI_EVENT_STA_DISCONNECTED) {
         s_ready = false;
-        if (id == WIFI_EVENT_STA_START) esp_wifi_connect();
+        // Reconnect only while an upload window owns the radio.  This keeps
+        // retries alive on a weak home network without leaving Wi-Fi on in
+        // standby.
+        if (s_started) esp_wifi_connect();
     }
-    if (id == IP_EVENT_STA_GOT_IP) s_ready = true;
+    if (id == IP_EVENT_STA_GOT_IP) {
+        s_ready = true;
+        start_clock_sync();
+    }
 }
 
 esp_err_t inspiration_wifi_init(void)
