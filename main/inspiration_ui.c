@@ -22,7 +22,7 @@ static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_libra
 static lv_obj_t *s_library_actions, *s_library_panel, *s_delete_cursor;
 static lv_obj_t *s_player_icon, *s_player_volume, *s_player_track;
 static lv_obj_t *s_player_fill, *s_player_knob, *s_player_time, *s_player_controls;
-static lv_obj_t *s_top, *s_battery, *s_status, *s_footer, *s_illustration, *s_meter[12];
+static lv_obj_t *s_top, *s_battery, *s_status, *s_footer, *s_illustration, *s_illustration_box, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
@@ -219,6 +219,11 @@ static void tick(lv_timer_t *timer)
         int frame = local.tm_hour / 2;
         if (frame != s_hour_frame) {
             lv_image_set_src(s_illustration, &meditation_hour_images[frame]);
+            // Keep the image viewport fixed when LVGL swaps a source. Without
+            // this, a source change can briefly reuse the old content bounds,
+            // exposing a neighboring contact-sheet row at the bottom.
+            lv_obj_set_size(s_illustration, 216, 216);
+            lv_obj_set_pos(s_illustration, 0, 0);
             s_hour_frame = frame;
         }
         lv_label_set_text_fmt(s_top, "%02d/%02d  %02d:%02d",
@@ -248,13 +253,15 @@ void inspiration_ui_start(void)
     // The clock label ends around y=22.  Keep only a quiet 7 px breath before
     // the main card, so the future visual (the meditation clock) gets nearly
     // the entire upper screen rather than a decorative empty gap.
-    s_illustration = lv_image_create(screen);
+    s_illustration_box = box(screen, 12, 38, 216, 216, INK);
+    lv_obj_set_style_clip_corner(s_illustration_box, true, 0);
+    s_illustration = lv_image_create(s_illustration_box);
     lv_image_set_src(s_illustration, &meditation_hour_images[0]);
     // Full-size source artwork avoids scaler bleed at the card's lower edge.
     // Each source frame is square. Keep the native aspect ratio so circular
     // sun/moon details remain circular on the portrait display.
     lv_obj_set_size(s_illustration, 216, 216);
-    lv_obj_set_pos(s_illustration, 12, 38);
+    lv_obj_set_pos(s_illustration, 0, 0);
     s_status = lv_label_create(screen);
     lv_obj_set_pos(s_status, 13, 266);
     // A slim, deliberately secondary waveform: audio state should be legible
