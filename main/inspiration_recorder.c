@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "bsp_audio.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
@@ -35,6 +36,7 @@ static FILE *s_chunk_file;
 static bool s_completion_requested;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
+static const char *TAG = "inspiration_recorder";
 
 static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
 {
@@ -234,14 +236,20 @@ static void playback_task(void *argument)
     FILE *file = NULL;
     uint8_t packet[RECORDER_PACKET_BYTES];
     int16_t pcm[RECORDER_BLOCK_SAMPLES];
+    unsigned packets = 0;
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) == ESP_OK &&
         inspiration_storage_open_chunk_read(sequence, &file) == ESP_OK) {
+        // The codec's output volume is not guaranteed after an input-only
+        // recording session.  Explicitly restore a comfortable speaker level.
+        bsp_audio_set_volume(80);
         while (!s_stop_playback && fread(packet, 1, sizeof(packet), file) == sizeof(packet)) {
             size_t samples = 0;
             if (!inspiration_adpcm_decode_packet(packet, sizeof(packet), pcm, RECORDER_BLOCK_SAMPLES, &samples) ||
                 samples != RECORDER_BLOCK_SAMPLES || bsp_audio_write(pcm, samples * sizeof(pcm[0])) != ESP_OK) break;
+            packets++;
         }
     }
+    ESP_LOGI(TAG, "playback chunk=%lu packets=%u", (unsigned long)sequence, packets);
     if (file) fclose(file);
     s_playing = false;
     s_stop_playback = false;
