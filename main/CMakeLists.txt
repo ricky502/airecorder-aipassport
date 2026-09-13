@@ -4,7 +4,7 @@ idf_component_register(
          "inspiration_chunk_queue.c"
          "inspiration_recorder.c"
          "inspiration_ui.c"
-         "meditation_clock_image.c"
+         "meditation_hours_images.c"
          "inspiration_upload.c"
          "inspiration_wifi.c"
          "inspiration_storage.c"

@@ -6,7 +6,7 @@
 #include "inspiration_recorder.h"
 #include "inspiration_storage.h"
 #include "inspiration_wifi.h"
-#include "meditation_clock_image.h"
+#include "meditation_hours_images.h"
 #include "lvgl.h"
 
 #define INK 0x102A33
@@ -16,8 +16,9 @@
 #define AMBER 0xF6C75A
 
 static lv_obj_t *s_home, *s_library, *s_library_text;
-static lv_obj_t *s_top, *s_status, *s_footer, *s_tint, *s_orbit, *s_meter[12];
+static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
+static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
 static size_t s_library_count, s_library_selected;
 
@@ -120,24 +121,11 @@ static void tick(lv_timer_t *timer)
     time_t now = time(NULL);
     struct tm local = {0};
     if (now > 1704067200 && localtime_r(&now, &local)) {
-        // The generated art contains the whole day in one calm scene.  A soft
-        // tint and the small orbit bead make it a live clock without needing
-        // multiple large images in this no-PSRAM device.
-        unsigned minute_of_day = (unsigned)local.tm_hour * 60U + (unsigned)local.tm_min;
-        uint32_t tint = 0x102A5C;
-        lv_opa_t opacity = 0;
-        if (minute_of_day < 360U || minute_of_day >= 1200U) opacity = LV_OPA_40;
-        else if (minute_of_day < 480U) { tint = 0xF6C75A; opacity = LV_OPA_20; }
-        else if (minute_of_day >= 1020U) { tint = 0xE87852; opacity = LV_OPA_20; }
-        lv_obj_set_style_bg_color(s_tint, lv_color_hex(tint), 0);
-        lv_obj_set_style_bg_opa(s_tint, opacity, 0);
-        unsigned day_arc = minute_of_day >= 360U && minute_of_day <= 1080U
-            ? minute_of_day - 360U : minute_of_day < 360U ? 0U : 720U;
-        int x = 26 + (int)(164U * day_arc / 720U);
-        unsigned distance = day_arc > 360U ? day_arc - 360U : 360U - day_arc;
-        int y = 42 + (int)(35U * distance / 360U);
-        lv_obj_set_pos(s_orbit, x, y);
-        lv_obj_set_style_bg_color(s_orbit, lv_color_hex(minute_of_day >= 360U && minute_of_day <= 1080U ? 0xFFF3A6 : 0xD6E5FF), 0);
+        int frame = local.tm_hour % MEDITATION_HOUR_FRAME_COUNT;
+        if (frame != s_hour_frame) {
+            lv_image_set_src(s_illustration, &meditation_hour_images[frame]);
+            s_hour_frame = frame;
+        }
         lv_label_set_text_fmt(s_top, "%02d/%02d  %02d:%02d                         %s",
                               local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, battery_text);
     } else {
@@ -159,13 +147,13 @@ void inspiration_ui_start(void)
     // The clock label ends around y=22.  Keep only a quiet 7 px breath before
     // the main card, so the future visual (the meditation clock) gets nearly
     // the entire upper screen rather than a decorative empty gap.
-    lv_obj_t *illustration = lv_image_create(screen);
-    lv_image_set_src(illustration, &meditation_clock_image);
-    lv_obj_set_pos(illustration, 12, 29);
-    s_tint = box(screen, 12, 29, 216, 217, 0x102A5C);
-    lv_obj_set_style_bg_opa(s_tint, LV_OPA_TRANSP, 0);
-    s_orbit = box(screen, 26, 77, 6, 6, 0xFFF3A6);
-    lv_obj_set_style_radius(s_orbit, LV_RADIUS_CIRCLE, 0);
+    s_illustration = lv_image_create(screen);
+    lv_image_set_src(s_illustration, &meditation_hour_images[0]);
+    lv_obj_set_pos(s_illustration, 12, 29);
+    // Store the visual at two-thirds resolution so all 24 hourly scenes fit
+    // safely in the 3 MB app partition; the display's scaler restores it to
+    // the 216 x 217 card area.
+    lv_image_set_scale(s_illustration, 384);
     s_status = lv_label_create(screen);
     lv_obj_set_pos(s_status, 13, 250);
     // A slim, deliberately secondary waveform: audio state should be legible
