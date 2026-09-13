@@ -170,9 +170,9 @@ static void tick(lv_timer_t *timer)
     inspiration_recorder_waveform(waveform);
     inspiration_recorder_set_wifi_ready(inspiration_wifi_ready());
     if (inspiration_wifi_setup_active()) {
-        lv_label_set_text(s_top, "WIFI PAIRING");
+        lv_label_set_text(s_top, "PAIR 192.168.4.1");
         lv_label_set_text_fmt(s_status, "JOIN AP: %s", inspiration_wifi_setup_ssid());
-        lv_label_set_text(s_footer, "OPEN 192.168.4.1");
+        lv_label_set_text_fmt(s_footer, "PWD: %s", inspiration_wifi_setup_password());
         lv_obj_set_style_text_color(s_status, lv_color_hex(AMBER), 0);
         return;
     }

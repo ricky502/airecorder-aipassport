@@ -24,6 +24,7 @@ static bool s_setup_starting;
 static bool s_setup_active;
 static char s_setup_ssid[33];
 static httpd_handle_t s_setup_server;
+#define SETUP_AP_PASSWORD "inspireme"
 
 static const char SETUP_PAGE[] =
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -81,7 +82,7 @@ static void setup_task(void *unused)
     wifi_config_t ap = {0};
     snprintf((char *)ap.ap.ssid, sizeof(ap.ap.ssid), "Passport-%02X%02X%02X", mac[3], mac[4], mac[5]);
     snprintf(s_setup_ssid, sizeof(s_setup_ssid), "%s", (char *)ap.ap.ssid);
-    snprintf((char *)ap.ap.password, sizeof(ap.ap.password), "inspireme");
+    snprintf((char *)ap.ap.password, sizeof(ap.ap.password), "%s", SETUP_AP_PASSWORD);
     ap.ap.ssid_len = strlen((const char *)ap.ap.ssid);
     ap.ap.channel = 1;
     ap.ap.max_connection = 2;
@@ -176,6 +177,7 @@ void inspiration_wifi_end_upload_window(void)
 bool inspiration_wifi_ready(void) { return s_ready; }
 bool inspiration_wifi_setup_active(void) { return s_setup_active; }
 const char *inspiration_wifi_setup_ssid(void) { return s_setup_ssid; }
+const char *inspiration_wifi_setup_password(void) { return SETUP_AP_PASSWORD; }
 
 void inspiration_wifi_begin_setup(void)
 {

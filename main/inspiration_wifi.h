@@ -12,3 +12,4 @@ bool inspiration_wifi_ready(void);
 void inspiration_wifi_begin_setup(void);
 bool inspiration_wifi_setup_active(void);
 const char *inspiration_wifi_setup_ssid(void);
+const char *inspiration_wifi_setup_password(void);
