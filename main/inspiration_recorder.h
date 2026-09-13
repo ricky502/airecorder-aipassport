@@ -18,3 +18,5 @@ void inspiration_recorder_waveform(uint8_t levels_out[12]);
 bool inspiration_recorder_play_chunk(uint32_t sequence);
 void inspiration_recorder_stop_playback(void);
 bool inspiration_recorder_is_playing(void);
+uint8_t inspiration_recorder_adjust_playback_volume(int delta);
+uint8_t inspiration_recorder_playback_volume(void);

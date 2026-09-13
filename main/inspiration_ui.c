@@ -69,9 +69,14 @@ static void render_library(void)
                            i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
     }
     if (offset > 0 && (size_t)offset < sizeof(text)) {
-        snprintf(text + offset, sizeof(text) - (size_t)offset,
-                 "\n%s\nUP/DOWN choose  OK listen\nHold UP to return",
-                 inspiration_recorder_is_playing() ? "PLAYING — DOWN stops" : "not uploaded yet");
+        if (inspiration_recorder_is_playing()) {
+            snprintf(text + offset, sizeof(text) - (size_t)offset,
+                     "\nPLAYING  VOL %u%%\nUP +  DOWN -  OK stop\nHold UP to return",
+                     (unsigned)inspiration_recorder_playback_volume());
+        } else {
+            snprintf(text + offset, sizeof(text) - (size_t)offset,
+                     "\nnot uploaded yet\nUP/DOWN choose  OK listen\nHold UP to return");
+        }
     }
     lv_label_set_text(s_library_text, text);
 }
@@ -195,7 +200,10 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
     }
     if (event != BSP_BTN_CLICK) return true;
     if (inspiration_recorder_is_playing()) {
-        if (button == BSP_BTN_DOWN || button == BSP_BTN_OK) inspiration_recorder_stop_playback();
+        if (button == BSP_BTN_UP) inspiration_recorder_adjust_playback_volume(10);
+        else if (button == BSP_BTN_DOWN) inspiration_recorder_adjust_playback_volume(-10);
+        else if (button == BSP_BTN_OK) inspiration_recorder_stop_playback();
+        render_library();
         return true;
     }
     if (button == BSP_BTN_UP && s_library_count) {

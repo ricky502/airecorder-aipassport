@@ -36,6 +36,7 @@ static FILE *s_chunk_file;
 static bool s_completion_requested;
 static volatile bool s_playing;
 static volatile bool s_stop_playback;
+static volatile uint8_t s_playback_volume = 70;
 static const char *TAG = "inspiration_recorder";
 
 static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
@@ -237,12 +238,17 @@ static void playback_task(void *argument)
     uint8_t packet[RECORDER_PACKET_BYTES];
     int16_t pcm[RECORDER_BLOCK_SAMPLES];
     unsigned packets = 0;
+    uint8_t applied_volume = 0;
     if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) == ESP_OK &&
         inspiration_storage_open_chunk_read(sequence, &file) == ESP_OK) {
-        // The codec's output volume is not guaranteed after an input-only
-        // recording session.  Explicitly restore a comfortable speaker level.
-        bsp_audio_set_volume(80);
         while (!s_stop_playback && fread(packet, 1, sizeof(packet), file) == sizeof(packet)) {
+            // Button events change the requested level; apply it here so the
+            // codec is only touched by the audio task while it is playing.
+            uint8_t requested_volume = s_playback_volume;
+            if (requested_volume != applied_volume) {
+                bsp_audio_set_volume(requested_volume);
+                applied_volume = requested_volume;
+            }
             size_t samples = 0;
             if (!inspiration_adpcm_decode_packet(packet, sizeof(packet), pcm, RECORDER_BLOCK_SAMPLES, &samples) ||
                 samples != RECORDER_BLOCK_SAMPLES || bsp_audio_write(pcm, samples * sizeof(pcm[0])) != ESP_OK) break;
@@ -327,3 +333,14 @@ bool inspiration_recorder_play_chunk(uint32_t sequence)
 
 void inspiration_recorder_stop_playback(void) { s_stop_playback = true; }
 bool inspiration_recorder_is_playing(void) { return s_playing; }
+
+uint8_t inspiration_recorder_adjust_playback_volume(int delta)
+{
+    int volume = (int)s_playback_volume + delta;
+    if (volume < 10) volume = 10;
+    if (volume > 100) volume = 100;
+    s_playback_volume = (uint8_t)volume;
+    return s_playback_volume;
+}
+
+uint8_t inspiration_recorder_playback_volume(void) { return s_playback_volume; }
