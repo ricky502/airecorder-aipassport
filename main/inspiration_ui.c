@@ -154,11 +154,12 @@ void inspiration_ui_start(void)
     // the entire upper screen rather than a decorative empty gap.
     s_illustration = lv_image_create(screen);
     lv_image_set_src(s_illustration, &meditation_hour_images[0]);
+    // Keep the image's box exactly inside the main-card area.  STRETCH anchors
+    // scaling at its top-left corner instead of expanding around the center,
+    // so it cannot cover the status bar or drift into the upper-left screen.
+    lv_obj_set_size(s_illustration, 216, 217);
+    lv_image_set_inner_align(s_illustration, LV_IMAGE_ALIGN_STRETCH);
     lv_obj_set_pos(s_illustration, 12, 29);
-    // Store the visual at two-thirds resolution so all 24 hourly scenes fit
-    // safely in the 3 MB app partition; the display's scaler restores it to
-    // the 216 x 217 card area.
-    lv_image_set_scale(s_illustration, 384);
     s_status = lv_label_create(screen);
     lv_obj_set_pos(s_status, 13, 250);
     // A slim, deliberately secondary waveform: audio state should be legible
