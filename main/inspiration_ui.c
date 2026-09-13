@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <time.h>
 #include "bsp_battery.h"
+#include "inspiration_adpcm.h"
+#include "inspiration_config.h"
 #include "inspiration_recorder.h"
 #include "inspiration_storage.h"
 #include "inspiration_wifi.h"
@@ -24,6 +26,7 @@ static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
+static uint32_t s_library_bytes[16];
 static size_t s_library_count, s_library_selected;
 static bool s_delete_confirm;
 static bool s_delete_selected;
@@ -43,9 +46,10 @@ static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t colo
 
 static bool collect_library_chunk(uint32_t sequence, uint32_t bytes, void *unused)
 {
-    (void)bytes; (void)unused;
+    (void)unused;
     if (s_library_count >= sizeof(s_library_chunks) / sizeof(s_library_chunks[0])) return false;
     s_library_chunks[s_library_count++] = sequence;
+    s_library_bytes[s_library_count - 1U] = bytes;
     return true;
 }
 
@@ -59,6 +63,9 @@ static void refresh_library(void)
                 uint32_t swap = s_library_chunks[i];
                 s_library_chunks[i] = s_library_chunks[j];
                 s_library_chunks[j] = swap;
+                swap = s_library_bytes[i];
+                s_library_bytes[i] = s_library_bytes[j];
+                s_library_bytes[j] = swap;
             }
         }
     }
@@ -85,8 +92,13 @@ static void render_library(void)
     size_t end = first + visible_rows;
     if (end > s_library_count) end = s_library_count;
     for (size_t i = first; i < end && offset >= 0 && (size_t)offset < sizeof(list); i++) {
+        const unsigned packet_bytes = INSPIRATION_ADPCM_HEADER_BYTES + 320U / 2U;
+        const unsigned packets = s_library_bytes[i] / packet_bytes;
+        const unsigned packet_ms = 320U * 1000U / INSPIRATION_SAMPLE_RATE_HZ;
+        const unsigned seconds = (packets * packet_ms + 999U) / 1000U;
         offset += snprintf(list + offset, sizeof(list) - (size_t)offset,
-                           LV_SYMBOL_AUDIO "  #%06u        01:00\n", (unsigned)s_library_chunks[i]);
+                           LV_SYMBOL_AUDIO "  #%06u        %02u:%02u\n", (unsigned)s_library_chunks[i],
+                           seconds / 60U, seconds % 60U);
     }
     if (s_library_count) {
         int line_height = lv_font_get_line_height(lv_obj_get_style_text_font(s_library_text, LV_PART_MAIN));
