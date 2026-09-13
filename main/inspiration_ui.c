@@ -19,7 +19,7 @@
 #define PANEL 0x173B47
 
 static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_library_cursor;
-static lv_obj_t *s_library_actions, *s_library_panel;
+static lv_obj_t *s_library_actions, *s_library_panel, *s_delete_cursor;
 static lv_obj_t *s_player_icon, *s_player_volume, *s_player_track;
 static lv_obj_t *s_player_fill, *s_player_knob, *s_player_time, *s_player_controls;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
@@ -141,12 +141,17 @@ static void render_library(void)
         lv_obj_add_flag(s_player_controls, LV_OBJ_FLAG_HIDDEN);
     }
     if (s_delete_confirm && s_library_count) {
-        snprintf(actions, sizeof(actions), LV_SYMBOL_WARNING "  #%06u\n%s KEEP\n%s " LV_SYMBOL_TRASH "  DELETE\n" LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " move   " LV_SYMBOL_OK " confirm",
-                 (unsigned)s_library_chunks[s_library_selected],
-                 s_delete_selected ? " " : ">",
-                 s_delete_selected ? ">" : " ");
+        // The pointer has its own column.  Keeping the option text in a
+        // separate, fixed column prevents a selected row from jumping right.
+        lv_obj_set_pos(s_library_actions, 36, 237);
+        lv_obj_set_pos(s_delete_cursor, 20, s_delete_selected ? 269 : 253);
+        lv_obj_remove_flag(s_delete_cursor, LV_OBJ_FLAG_HIDDEN);
+        snprintf(actions, sizeof(actions), LV_SYMBOL_WARNING "  #%06u\nKEEP\n" LV_SYMBOL_TRASH "  DELETE\n" LV_SYMBOL_UP "/" LV_SYMBOL_DOWN " move   " LV_SYMBOL_OK " confirm",
+                 (unsigned)s_library_chunks[s_library_selected]);
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(RED), 0);
     } else {
+        lv_obj_set_pos(s_library_actions, 20, 237);
+        lv_obj_add_flag(s_delete_cursor, LV_OBJ_FLAG_HIDDEN);
         snprintf(actions, sizeof(actions), LV_SYMBOL_PLAY "  OK\n" LV_SYMBOL_TRASH "  HOLD OK\n"
                  LV_SYMBOL_LEFT "  HOLD UP");
         lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
@@ -277,6 +282,10 @@ void inspiration_ui_open_library(void)
     lv_obj_set_size(s_library_actions, 200, 68);
     lv_label_set_long_mode(s_library_actions, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
+    s_delete_cursor = lv_label_create(s_library);
+    lv_label_set_text(s_delete_cursor, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(s_delete_cursor, lv_color_hex(RED), 0);
+    lv_obj_add_flag(s_delete_cursor, LV_OBJ_FLAG_HIDDEN);
     // Playback is deliberately its own fixed layout: the bar is real elapsed
     // time, while volume stays as a fixed percentage at the upper right.
     s_player_icon = lv_label_create(s_library_panel);
@@ -326,6 +335,7 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         s_library_cursor = NULL;
         s_library_actions = NULL;
         s_library_panel = NULL;
+        s_delete_cursor = NULL;
         s_player_icon = NULL;
         s_player_volume = NULL;
         s_player_track = NULL;
