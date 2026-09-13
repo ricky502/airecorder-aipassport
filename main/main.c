@@ -5,6 +5,7 @@
 #include "bsp_i2c.h"
 #include "esp_log.h"
 #include "inspiration_recorder.h"
+#include "inspiration_power.h"
 #include "inspiration_ui.h"
 #include "inspiration_wifi.h"
 
@@ -14,6 +15,7 @@ static const char *TAG = "inspiration";
 static void on_key(bsp_btn_t button, bsp_btn_ev_t event, void *user)
 {
     (void)user;
+    inspiration_power_note_activity();
     bool handled = false;
     if (bsp_lvgl_lock(50)) {
         handled = inspiration_ui_handle_key(button, event);
@@ -57,4 +59,5 @@ void app_main(void)
         inspiration_ui_start();
         bsp_lvgl_unlock();
     }
+    inspiration_power_init();
 }

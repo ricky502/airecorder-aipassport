@@ -17,6 +17,7 @@ static i2s_chan_handle_t      s_tx, s_rx;
 static uint32_t s_hz;
 static uint8_t  s_bits, s_ch;
 static bool     s_opened;
+static bool     s_suspended;
 
 static esp_err_t i2s_full_duplex_init(void) {
     i2s_chan_config_t chan = {
@@ -134,6 +135,13 @@ esp_err_t bsp_audio_set_format(uint32_t hz, uint8_t bits, uint8_t ch) {
         if (s_tx) i2s_channel_enable(s_tx);
         if (s_rx) i2s_channel_enable(s_rx);
     }
+    else if (s_suspended) {
+        // suspend leaves the I2S channels ready; re-enable them before the
+        // codec opens its stream again.
+        if (s_tx) i2s_channel_enable(s_tx);
+        if (s_rx) i2s_channel_enable(s_rx);
+        s_suspended = false;
+    }
 
     esp_codec_dev_sample_info_t fs = {
         .bits_per_sample = bits,
@@ -167,4 +175,14 @@ esp_err_t bsp_audio_read(void *pcm, size_t bytes) {
 
 void bsp_audio_set_volume(uint8_t percent) {
     if (s_dev) esp_codec_dev_set_out_vol(s_dev, percent);
+}
+
+void bsp_audio_suspend(void)
+{
+    if (!s_dev || s_suspended) return;
+    if (s_opened) {
+        esp_codec_dev_close(s_dev);
+        s_opened = false;
+    }
+    s_suspended = true;
 }
