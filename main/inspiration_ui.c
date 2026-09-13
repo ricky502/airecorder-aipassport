@@ -67,9 +67,24 @@ static void render_library(void)
     char text[420];
     int offset = snprintf(text, sizeof(text), "VOICE INBOX  %u\n", (unsigned)s_library_count);
     if (!s_library_count) offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "\nNo offline clips.\n");
-    for (size_t i = 0; i < s_library_count && offset > 0 && (size_t)offset < sizeof(text); i++) {
+    // Keep the selected clip near the middle of a short fixed-height list.
+    // Rendering all sixteen rows leaves no room for the delete controls and
+    // makes LVGL push the useful text below the screen.
+    const size_t visible_rows = 7;
+    size_t first = s_library_selected > visible_rows / 2U ? s_library_selected - visible_rows / 2U : 0;
+    if (s_library_count > visible_rows && first + visible_rows > s_library_count) {
+        first = s_library_count - visible_rows;
+    }
+    size_t end = first + visible_rows;
+    if (end > s_library_count) end = s_library_count;
+    for (size_t i = first; i < end && offset > 0 && (size_t)offset < sizeof(text); i++) {
         offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "%s #%06u  about 1 min\n",
                            i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
+    }
+    if (s_library_count > visible_rows && offset > 0 && (size_t)offset < sizeof(text)) {
+        offset += snprintf(text + offset, sizeof(text) - (size_t)offset,
+                           "[%u-%u of %u]\n", (unsigned)(first + 1U),
+                           (unsigned)end, (unsigned)s_library_count);
     }
     if (offset > 0 && (size_t)offset < sizeof(text)) {
         if (s_delete_confirm && s_library_count) {
@@ -194,9 +209,11 @@ void inspiration_ui_open_library(void)
     lv_obj_remove_flag(s_library, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(s_library, lv_color_hex(INK), 0);
     lv_obj_set_style_border_width(s_library, 0, 0);
-    lv_obj_set_style_pad_all(s_library, 14, 0);
+    lv_obj_set_style_pad_all(s_library, 0, 0);
     s_library_text = lv_label_create(s_library);
-    lv_obj_set_pos(s_library_text, 14, 18);
+    lv_obj_set_pos(s_library_text, 12, 10);
+    lv_obj_set_size(s_library_text, 216, 300);
+    lv_label_set_long_mode(s_library_text, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_text, lv_color_hex(LIME), 0);
     render_library();
     lv_screen_load(s_library);
