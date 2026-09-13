@@ -14,6 +14,12 @@ static const char *TAG = "inspiration";
 static void on_key(bsp_btn_t button, bsp_btn_ev_t event, void *user)
 {
     (void)user;
+    bool handled = false;
+    if (bsp_lvgl_lock(50)) {
+        handled = inspiration_ui_handle_key(button, event);
+        bsp_lvgl_unlock();
+    }
+    if (handled) return;
     if (button == BSP_BTN_UP && event == BSP_BTN_LONG) {
         inspiration_wifi_begin_setup();
         return;
@@ -21,6 +27,10 @@ static void on_key(bsp_btn_t button, bsp_btn_ev_t event, void *user)
     if (event != BSP_BTN_CLICK) return;
     if (button == BSP_BTN_OK) inspiration_recorder_toggle();
     if (button == BSP_BTN_DOWN) inspiration_recorder_stop();
+    if (button == BSP_BTN_UP && bsp_lvgl_lock(50)) {
+        inspiration_ui_open_library();
+        bsp_lvgl_unlock();
+    }
 }
 
 void app_main(void)

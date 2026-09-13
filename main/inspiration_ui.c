@@ -15,8 +15,11 @@
 #define RED 0xFF5E64
 #define AMBER 0xF6C75A
 
+static lv_obj_t *s_home, *s_library, *s_library_text;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_tint, *s_orbit, *s_meter[12];
 static uint8_t s_stop_ticks;
+static uint32_t s_library_chunks[16];
+static size_t s_library_count, s_library_selected;
 
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color)
 {
@@ -30,13 +33,61 @@ static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t colo
     return obj;
 }
 
+static bool collect_library_chunk(uint32_t sequence, uint32_t bytes, void *unused)
+{
+    (void)bytes; (void)unused;
+    if (s_library_count >= sizeof(s_library_chunks) / sizeof(s_library_chunks[0])) return false;
+    s_library_chunks[s_library_count++] = sequence;
+    return true;
+}
+
+static void refresh_library(void)
+{
+    s_library_count = 0;
+    inspiration_storage_for_each_chunk(collect_library_chunk, NULL);
+    for (size_t i = 0; i < s_library_count; i++) {
+        for (size_t j = i + 1; j < s_library_count; j++) {
+            if (s_library_chunks[j] < s_library_chunks[i]) {
+                uint32_t swap = s_library_chunks[i];
+                s_library_chunks[i] = s_library_chunks[j];
+                s_library_chunks[j] = swap;
+            }
+        }
+    }
+    if (s_library_selected >= s_library_count) s_library_selected = 0;
+}
+
+static void render_library(void)
+{
+    if (!s_library_text) return;
+    char text[420];
+    int offset = snprintf(text, sizeof(text), "VOICE INBOX  %u\n", (unsigned)s_library_count);
+    if (!s_library_count) offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "\nNo offline clips.\n");
+    for (size_t i = 0; i < s_library_count && offset > 0 && (size_t)offset < sizeof(text); i++) {
+        offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "%s #%06u  about 1 min\n",
+                           i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
+    }
+    if (offset > 0 && (size_t)offset < sizeof(text)) {
+        snprintf(text + offset, sizeof(text) - (size_t)offset,
+                 "\n%s\nUP/DOWN choose  OK listen\nHold UP to return",
+                 inspiration_recorder_is_playing() ? "PLAYING — DOWN stops" : "not uploaded yet");
+    }
+    lv_label_set_text(s_library_text, text);
+}
+
 static void tick(lv_timer_t *timer)
 {
     (void)timer;
     inspiration_state_t state;
     uint16_t peak;
+    uint8_t waveform[12] = {0};
     inspiration_recorder_snapshot(&state, &peak);
+    inspiration_recorder_waveform(waveform);
     inspiration_recorder_set_wifi_ready(inspiration_wifi_ready());
+    if (s_library) {
+        render_library();
+        return;
+    }
     uint32_t color = MINT;
     const char *word = "";
     if (state.phase == INSPIRATION_RECORDING) { color = RED; word = "● REC"; }
@@ -46,8 +97,7 @@ static void tick(lv_timer_t *timer)
     lv_label_set_text(s_status, word);
     lv_obj_set_style_text_color(s_status, lv_color_hex(color), 0);
     for (int i = 0; i < 12; i++) {
-        int height = (state.phase == INSPIRATION_RECORDING) ?
-            2 + (int)((peak >> 10) + (uint16_t)(i * 3)) % 19 : 2;
+        int height = state.phase == INSPIRATION_RECORDING ? waveform[i] : 2;
         lv_obj_set_height(s_meter[i], height);
         lv_obj_set_y(s_meter[i], 276 - height);
         lv_obj_set_style_bg_color(s_meter[i], lv_color_hex(color), 0);
@@ -98,6 +148,7 @@ static void tick(lv_timer_t *timer)
 void inspiration_ui_start(void)
 {
     lv_obj_t *screen = lv_obj_create(NULL);
+    s_home = screen;
     lv_obj_remove_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(screen, lv_color_hex(INK), 0);
     lv_obj_set_style_border_width(screen, 0, 0);
@@ -125,4 +176,47 @@ void inspiration_ui_start(void)
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
     lv_screen_load(screen);
     lv_timer_create(tick, 120, NULL);
+}
+
+void inspiration_ui_open_library(void)
+{
+    if (s_library) return;
+    refresh_library();
+    s_library = lv_obj_create(NULL);
+    lv_obj_remove_flag(s_library, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_color(s_library, lv_color_hex(INK), 0);
+    lv_obj_set_style_border_width(s_library, 0, 0);
+    lv_obj_set_style_pad_all(s_library, 14, 0);
+    s_library_text = lv_label_create(s_library);
+    lv_obj_set_pos(s_library_text, 14, 18);
+    lv_obj_set_style_text_color(s_library_text, lv_color_hex(LIME), 0);
+    render_library();
+    lv_screen_load(s_library);
+}
+
+bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
+{
+    if (!s_library) return false;
+    if (button == BSP_BTN_UP && event == BSP_BTN_LONG) {
+        inspiration_recorder_stop_playback();
+        lv_screen_load(s_home);
+        lv_obj_delete(s_library);
+        s_library = NULL;
+        s_library_text = NULL;
+        return true;
+    }
+    if (event != BSP_BTN_CLICK) return true;
+    if (inspiration_recorder_is_playing()) {
+        if (button == BSP_BTN_DOWN || button == BSP_BTN_OK) inspiration_recorder_stop_playback();
+        return true;
+    }
+    if (button == BSP_BTN_UP && s_library_count) {
+        s_library_selected = s_library_selected ? s_library_selected - 1U : s_library_count - 1U;
+    } else if (button == BSP_BTN_DOWN && s_library_count) {
+        s_library_selected = (s_library_selected + 1U) % s_library_count;
+    } else if (button == BSP_BTN_OK && s_library_count) {
+        inspiration_recorder_play_chunk(s_library_chunks[s_library_selected]);
+    }
+    render_library();
+    return true;
 }

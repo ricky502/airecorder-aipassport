@@ -1,6 +1,7 @@
 #include "inspiration_recorder.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "bsp_audio.h"
 #include "freertos/FreeRTOS.h"
@@ -27,10 +28,13 @@ static inspiration_state_t s_state;
 static inspiration_chunk_queue_t s_chunks;
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static uint16_t s_peak;
+static uint8_t s_waveform[12];
 static uint32_t s_next_sequence = 1;
 static uint32_t s_chunk_samples;
 static FILE *s_chunk_file;
 static bool s_completion_requested;
+static volatile bool s_playing;
+static volatile bool s_stop_playback;
 
 static bool recover_chunk(uint32_t sequence, uint32_t bytes, void *user)
 {
@@ -92,6 +96,7 @@ static bool finalize_chunk(void)
 
 static void service_upload_window(void)
 {
+    if (s_playing) return;
     if (!inspiration_upload_configured() || !inspiration_upload_session_active()) return;
     inspiration_chunk_t chunk;
     if (xSemaphoreTake(s_chunks_mutex, pdMS_TO_TICKS(50)) != pdTRUE) return;
@@ -194,6 +199,11 @@ static void recorder_task(void *unused)
             if (xQueueReceive(s_events, &event, pdMS_TO_TICKS(200)) == pdTRUE) process_event(event);
             continue;
         }
+        // The microphone loop runs every 40 ms, but it must still drain button
+        // events immediately.  Without this, pause/stop sat in the queue until
+        // the recording ended, making the hardware controls appear broken.
+        while (xQueueReceive(s_events, &event, 0) == pdTRUE) process_event(event);
+        if (!state_is_recording()) continue;
         if (bsp_audio_read(pcm, sizeof(pcm)) != ESP_OK) { state_fail(); continue; }
         uint16_t peak = 0;
         for (size_t i = 0; i < RECORDER_BLOCK_SAMPLES; i++) {
@@ -207,6 +217,8 @@ static void recorder_task(void *unused)
         s_chunk_samples += RECORDER_BLOCK_SAMPLES;
         portENTER_CRITICAL(&s_lock);
         s_peak = peak;
+        memmove(s_waveform, s_waveform + 1, sizeof(s_waveform) - 1U);
+        s_waveform[sizeof(s_waveform) - 1U] = (uint8_t)(2U + (peak > 18431U ? 18U : peak / 1024U));
         inspiration_state_tick(&s_state, RECORDER_BLOCK_SAMPLES * 1000U / INSPIRATION_SAMPLE_RATE_HZ);
         portEXIT_CRITICAL(&s_lock);
         if (s_chunk_samples >= INSPIRATION_CHUNK_SECONDS * INSPIRATION_SAMPLE_RATE_HZ) {
@@ -214,6 +226,26 @@ static void recorder_task(void *unused)
             else if (inspiration_upload_configured()) inspiration_wifi_begin_upload_window();
         }
     }
+}
+
+static void playback_task(void *argument)
+{
+    uint32_t sequence = (uint32_t)(uintptr_t)argument;
+    FILE *file = NULL;
+    uint8_t packet[RECORDER_PACKET_BYTES];
+    int16_t pcm[RECORDER_BLOCK_SAMPLES];
+    if (bsp_audio_set_format(INSPIRATION_SAMPLE_RATE_HZ, INSPIRATION_PCM_BITS, 1) == ESP_OK &&
+        inspiration_storage_open_chunk_read(sequence, &file) == ESP_OK) {
+        while (!s_stop_playback && fread(packet, 1, sizeof(packet), file) == sizeof(packet)) {
+            size_t samples = 0;
+            if (!inspiration_adpcm_decode_packet(packet, sizeof(packet), pcm, RECORDER_BLOCK_SAMPLES, &samples) ||
+                samples != RECORDER_BLOCK_SAMPLES || bsp_audio_write(pcm, samples * sizeof(pcm[0])) != ESP_OK) break;
+        }
+    }
+    if (file) fclose(file);
+    s_playing = false;
+    s_stop_playback = false;
+    vTaskDelete(NULL);
 }
 
 esp_err_t inspiration_recorder_init(void)
@@ -268,3 +300,22 @@ void inspiration_recorder_snapshot(inspiration_state_t *state_out, uint16_t *pea
     if (peak_out) *peak_out = s_peak;
     portEXIT_CRITICAL(&s_lock);
 }
+
+void inspiration_recorder_waveform(uint8_t levels_out[12])
+{
+    if (!levels_out) return;
+    portENTER_CRITICAL(&s_lock);
+    memcpy(levels_out, s_waveform, sizeof(s_waveform));
+    portEXIT_CRITICAL(&s_lock);
+}
+
+bool inspiration_recorder_play_chunk(uint32_t sequence)
+{
+    if (!sequence || s_playing || state_is_active()) return false;
+    s_stop_playback = false;
+    s_playing = xTaskCreate(playback_task, "inspiration_play", 4096, (void *)(uintptr_t)sequence, 3, NULL) == pdPASS;
+    return s_playing;
+}
+
+void inspiration_recorder_stop_playback(void) { s_stop_playback = true; }
+bool inspiration_recorder_is_playing(void) { return s_playing; }
