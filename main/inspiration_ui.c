@@ -14,7 +14,7 @@
 #define RED 0xFF5E64
 #define AMBER 0xF6C75A
 
-static lv_obj_t *s_top, *s_status, *s_footer, *s_meter[18];
+static lv_obj_t *s_top, *s_status, *s_footer, *s_meter[12];
 static uint8_t s_stop_ticks;
 
 static lv_obj_t *box(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color)
@@ -44,7 +44,7 @@ static void tick(lv_timer_t *timer)
     else s_stop_ticks = 0;
     lv_label_set_text(s_status, word);
     lv_obj_set_style_text_color(s_status, lv_color_hex(color), 0);
-    for (int i = 0; i < 18; i++) {
+    for (int i = 0; i < 12; i++) {
         int height = (state.phase == INSPIRATION_RECORDING) ?
             2 + (int)((peak >> 10) + (uint16_t)(i * 3)) % 19 : 2;
         lv_obj_set_height(s_meter[i], height);
@@ -84,17 +84,22 @@ void inspiration_ui_start(void)
     lv_obj_set_style_border_width(screen, 0, 0);
     lv_obj_set_style_pad_all(screen, 0, 0);
     s_top = lv_label_create(screen);
-    lv_obj_set_pos(s_top, 12, 10);
+    lv_obj_set_pos(s_top, 12, 8);
     lv_obj_set_style_text_color(s_top, lv_color_hex(LIME), 0);
-    box(screen, 12, 42, 216, 188, 0x163B45);
+    // The clock label ends around y=22.  Keep only a quiet 7 px breath before
+    // the main card, so the future visual (the meditation clock) gets nearly
+    // the entire upper screen rather than a decorative empty gap.
+    box(screen, 12, 29, 216, 203, 0x163B45);
     lv_obj_t *placeholder = lv_label_create(screen);
     lv_label_set_text(placeholder, "YOUR LITTLE WORLD\n\nreserved for a mood card,\nan electronic pet, or a quiet thought.");
     lv_obj_center(placeholder);
     lv_obj_set_style_text_align(placeholder, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(placeholder, lv_color_hex(LIME), 0);
     s_status = lv_label_create(screen);
-    lv_obj_set_pos(s_status, 13, 244);
-    for (int i = 0; i < 18; i++) s_meter[i] = box(screen, 68 + i * 8, 268, 4, 2, MINT);
+    lv_obj_set_pos(s_status, 13, 241);
+    // A slim, deliberately secondary waveform: audio state should be legible
+    // without competing with the main visual card.
+    for (int i = 0; i < 12; i++) s_meter[i] = box(screen, 79 + i * 6, 268, 3, 2, MINT);
     s_footer = lv_label_create(screen);
     lv_obj_set_pos(s_footer, 12, 293);
     lv_obj_set_style_text_color(s_footer, lv_color_hex(LIME), 0);
