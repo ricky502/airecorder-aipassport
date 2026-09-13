@@ -218,7 +218,10 @@ void inspiration_wifi_end_upload_window(void)
     s_started = false;
 }
 
-bool inspiration_wifi_ready(void) { return s_ready; }
+// READY is a transient upload-window status, not a persistent Wi-Fi setting.
+// Once the window closes, the radio is stopped and the home screen must show
+// OFFLINE even if credentials are still configured.
+bool inspiration_wifi_ready(void) { return s_started && s_ready; }
 bool inspiration_wifi_setup_active(void) { return s_setup_active; }
 const char *inspiration_wifi_setup_ssid(void) { return s_setup_ssid; }
 const char *inspiration_wifi_setup_password(void) { return SETUP_AP_PASSWORD; }
