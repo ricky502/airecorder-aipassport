@@ -15,7 +15,7 @@
 #define RED 0xFF5E64
 #define AMBER 0xF6C75A
 
-static lv_obj_t *s_home, *s_library, *s_library_text;
+static lv_obj_t *s_home, *s_library, *s_library_text, *s_library_actions;
 static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
@@ -63,48 +63,45 @@ static void refresh_library(void)
 
 static void render_library(void)
 {
-    if (!s_library_text) return;
-    char text[420];
-    int offset = snprintf(text, sizeof(text), "VOICE INBOX  %u\n", (unsigned)s_library_count);
-    if (!s_library_count) offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "\nNo offline clips.\n");
-    // Keep the selected clip near the middle of a short fixed-height list.
-    // Rendering all sixteen rows leaves no room for the delete controls and
-    // makes LVGL push the useful text below the screen.
-    const size_t visible_rows = 7;
+    if (!s_library_text || !s_library_actions) return;
+    char list[320];
+    char actions[160];
+    int offset = snprintf(list, sizeof(list), "VOICE INBOX  %u\n", (unsigned)s_library_count);
+    if (!s_library_count) offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "\nNo offline clips.\n");
+
+    // The upper region is deliberately generous: 10 clip rows plus a header
+    // and range marker. The controls are rendered in their own bottom region,
+    // so they never get pushed away by a long offline list.
+    const size_t visible_rows = 10;
     size_t first = s_library_selected > visible_rows / 2U ? s_library_selected - visible_rows / 2U : 0;
     if (s_library_count > visible_rows && first + visible_rows > s_library_count) {
         first = s_library_count - visible_rows;
     }
     size_t end = first + visible_rows;
     if (end > s_library_count) end = s_library_count;
-    for (size_t i = first; i < end && offset > 0 && (size_t)offset < sizeof(text); i++) {
-        offset += snprintf(text + offset, sizeof(text) - (size_t)offset, "%s #%06u  about 1 min\n",
+    for (size_t i = first; i < end && offset > 0 && (size_t)offset < sizeof(list); i++) {
+        offset += snprintf(list + offset, sizeof(list) - (size_t)offset, "%s #%06u  about 1 min\n",
                            i == s_library_selected ? ">" : " ", (unsigned)s_library_chunks[i]);
     }
-    if (s_library_count > visible_rows && offset > 0 && (size_t)offset < sizeof(text)) {
-        offset += snprintf(text + offset, sizeof(text) - (size_t)offset,
+    if (s_library_count > visible_rows && offset > 0 && (size_t)offset < sizeof(list)) {
+        offset += snprintf(list + offset, sizeof(list) - (size_t)offset,
                            "[%u-%u of %u]\n", (unsigned)(first + 1U),
                            (unsigned)end, (unsigned)s_library_count);
     }
-    if (offset > 0 && (size_t)offset < sizeof(text)) {
-        if (s_delete_confirm && s_library_count) {
-            snprintf(text + offset, sizeof(text) - (size_t)offset,
-                     "\nDELETE #%06u?\n%s KEEP\n%s DELETE\nUP/DOWN choose  OK confirm",
-                     (unsigned)s_library_chunks[s_library_selected],
-                     s_delete_selected ? "  " : ">",
-                     s_delete_selected ? ">" : "  ");
-        } else
-        if (inspiration_recorder_is_playing()) {
-            snprintf(text + offset, sizeof(text) - (size_t)offset,
-                     "\nPLAYING  VOL %u%%\nUP +  DOWN -  OK stop\nHold UP to return",
-                     (unsigned)inspiration_recorder_playback_volume());
-        } else {
-            snprintf(text + offset, sizeof(text) - (size_t)offset,
-                     "\n%s\nUP/DOWN choose  OK listen\nHold OK delete  Hold UP return",
-                     s_library_notice ? s_library_notice : "not uploaded yet");
-        }
+    if (s_delete_confirm && s_library_count) {
+        snprintf(actions, sizeof(actions), "DELETE #%06u?\n%s KEEP\n%s DELETE\nUP/DOWN choose · OK confirm",
+                 (unsigned)s_library_chunks[s_library_selected],
+                 s_delete_selected ? "  " : ">",
+                 s_delete_selected ? ">" : "  ");
+    } else if (inspiration_recorder_is_playing()) {
+        snprintf(actions, sizeof(actions), "PLAYING  VOL %u%%\nUP +  DOWN -  OK stop\nHold UP to return",
+                 (unsigned)inspiration_recorder_playback_volume());
+    } else {
+        snprintf(actions, sizeof(actions), "%s\nUP/DOWN choose · OK listen\nHold OK delete · Hold UP return",
+                 s_library_notice ? s_library_notice : "not uploaded yet");
     }
-    lv_label_set_text(s_library_text, text);
+    lv_label_set_text(s_library_text, list);
+    lv_label_set_text(s_library_actions, actions);
 }
 
 static void tick(lv_timer_t *timer)
@@ -211,10 +208,15 @@ void inspiration_ui_open_library(void)
     lv_obj_set_style_border_width(s_library, 0, 0);
     lv_obj_set_style_pad_all(s_library, 0, 0);
     s_library_text = lv_label_create(s_library);
-    lv_obj_set_pos(s_library_text, 12, 10);
-    lv_obj_set_size(s_library_text, 216, 300);
+    lv_obj_set_pos(s_library_text, 12, 8);
+    lv_obj_set_size(s_library_text, 216, 210);
     lv_label_set_long_mode(s_library_text, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(s_library_text, lv_color_hex(LIME), 0);
+    s_library_actions = lv_label_create(s_library);
+    lv_obj_set_pos(s_library_actions, 12, 232);
+    lv_obj_set_size(s_library_actions, 216, 82);
+    lv_label_set_long_mode(s_library_actions, LV_LABEL_LONG_CLIP);
+    lv_obj_set_style_text_color(s_library_actions, lv_color_hex(AMBER), 0);
     render_library();
     lv_screen_load(s_library);
 }
@@ -229,6 +231,7 @@ bool inspiration_ui_handle_key(bsp_btn_t button, bsp_btn_ev_t event)
         lv_obj_delete(s_library);
         s_library = NULL;
         s_library_text = NULL;
+        s_library_actions = NULL;
         return true;
     }
     if (button == BSP_BTN_OK && event == BSP_BTN_LONG && !inspiration_recorder_is_playing() && s_library_count) {
