@@ -314,6 +314,15 @@ esp_err_t inspiration_recorder_init(void)
     if (err != ESP_OK) return err;
     inspiration_storage_for_each_chunk(recover_chunk, NULL);
     inspiration_upload_load_config();
+    // A power loss can occur after chunks are safely closed but before the
+    // complete request reaches the receiver.  Recovered chunks therefore
+    // represent a pending finished session and must resume through /complete
+    // after the individual chunk uploads, even though this RAM flag was lost.
+    if (s_chunks.count > 0) {
+        if (!inspiration_upload_session_active()) inspiration_upload_begin_session();
+        s_completion_requested = true;
+        ESP_LOGI(TAG, "恢复 %u 个待上传分片，启动自动上传", (unsigned)s_chunks.count);
+    }
     s_events = xQueueCreate(RECORDER_QUEUE_LENGTH, sizeof(recorder_event_t));
     if (!s_events) return ESP_ERR_NO_MEM;
     if (xTaskCreate(recorder_task, "inspiration_rec", 4096, NULL, 4, NULL) != pdPASS) {

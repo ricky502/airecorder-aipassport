@@ -64,3 +64,5 @@
   `OFFLINE`.
 - Clarified `READY` to mean an HTTP upload is actively in progress, avoiding
   flicker during Wi-Fi association and mDNS retries.
+- Fixed power-loss recovery so recovered audio chunks resume their session and
+  submit `/complete` automatically for downstream transcription and delivery.
