@@ -22,7 +22,7 @@ static lv_obj_t *s_home, *s_library, *s_library_title, *s_library_text, *s_libra
 static lv_obj_t *s_library_actions, *s_library_panel, *s_delete_cursor;
 static lv_obj_t *s_player_icon, *s_player_volume, *s_player_track;
 static lv_obj_t *s_player_fill, *s_player_knob, *s_player_time, *s_player_controls;
-static lv_obj_t *s_top, *s_status, *s_footer, *s_illustration, *s_meter[12];
+static lv_obj_t *s_top, *s_battery, *s_status, *s_footer, *s_illustration, *s_meter[12];
 static uint8_t s_stop_ticks;
 static int s_hour_frame = 0;
 static uint32_t s_library_chunks[16];
@@ -212,11 +212,12 @@ static void tick(lv_timer_t *timer)
             lv_image_set_src(s_illustration, &meditation_hour_images[frame]);
             s_hour_frame = frame;
         }
-        lv_label_set_text_fmt(s_top, "%02d/%02d  %02d:%02d                         %s",
-                              local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min, battery_text);
+        lv_label_set_text_fmt(s_top, "%02d/%02d  %02d:%02d",
+                              local.tm_mon + 1, local.tm_mday, local.tm_hour, local.tm_min);
     } else {
-        lv_label_set_text_fmt(s_top, "--/--  --:--                         %s", battery_text);
+        lv_label_set_text(s_top, "--/--  --:--");
     }
+    lv_label_set_text(s_battery, battery_text);
 }
 
 void inspiration_ui_start(void)
@@ -230,6 +231,11 @@ void inspiration_ui_start(void)
     s_top = lv_label_create(screen);
     lv_obj_set_pos(s_top, 12, 8);
     lv_obj_set_style_text_color(s_top, lv_color_hex(LIME), 0);
+    s_battery = lv_label_create(screen);
+    lv_obj_set_pos(s_battery, 186, 8);
+    lv_obj_set_size(s_battery, 42, 16);
+    lv_obj_set_style_text_align(s_battery, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_color(s_battery, lv_color_hex(LIME), 0);
     // The clock label ends around y=22.  Keep only a quiet 7 px breath before
     // the main card, so the future visual (the meditation clock) gets nearly
     // the entire upper screen rather than a decorative empty gap.

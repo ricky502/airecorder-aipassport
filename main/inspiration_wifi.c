@@ -29,7 +29,7 @@ static const char SETUP_PAGE[] =
     "<h2>AI Passport · 灵感记忆卡</h2><p>填好后卡片会重启并保存设置。</p>"
     "<form method=post action=/save><label>Wi-Fi 名称</label><input name=ssid maxlength=32 required>"
     "<label>Wi-Fi 密码</label><input name=pass type=password maxlength=64>"
-    "<label>飞书中转地址</label><input name=endpoint maxlength=127 value='" INSPIRATION_DEFAULT_BACKEND_ENDPOINT "' required>"
+    "<label>中转地址</label><input name=endpoint type=url maxlength=127 value='" INSPIRATION_DEFAULT_BACKEND_ENDPOINT "' placeholder='http://computer.local:8787' required>"
     "<button>保存并重启</button></form>";
 
 static esp_err_t setup_page_handler(httpd_req_t *request)

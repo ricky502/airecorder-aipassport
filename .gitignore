@@ -6,3 +6,12 @@ managed_components/
 .idea/
 __pycache__/
 *.pyc
+.env
+.env.*
+!.env.example
+*.log
+backend/data/
+backend/inbox/
+backend/processed/
+backend/passport/
+recordings/

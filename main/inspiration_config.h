@@ -10,7 +10,9 @@
 // roughly 12 minutes after filesystem overhead, while retaining useful ASR speech.
 #define INSPIRATION_OFFLINE_TARGET_SECONDS 600U
 
-// Match the existing Cardputer recorder backend.  A future provisioning flow
-// may store an NVS override, but a freshly flashed Passport is useful on the
-// same LAN without requiring a second companion application.
+// A freshly flashed device stays safely offline until its owner enters a
+// private receiver address on the local provisioning page.  Never put a
+// personal LAN address, webhook, or credentials into public firmware source.
+#ifndef INSPIRATION_DEFAULT_BACKEND_ENDPOINT
 #define INSPIRATION_DEFAULT_BACKEND_ENDPOINT ""
+#endif
