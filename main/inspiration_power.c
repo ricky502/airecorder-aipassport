@@ -3,9 +3,7 @@
 #include "bsp_audio.h"
 #include "bsp_display.h"
 #include "esp_log.h"
-#include "esp_sleep.h"
 #include "esp_timer.h"
-#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/portmacro.h"
 #include "freertos/task.h"
@@ -17,7 +15,6 @@
 #define POWER_SLEEP_AFTER_MS     (10U * 60U * 1000U)
 #define POWER_DIM_LEVEL          20U
 #define POWER_RECORDING_LEVEL    18U
-#define POWER_BUTTON_GPIO        0
 
 static const char *TAG = "inspiration_power";
 static TaskHandle_t s_task;
@@ -59,32 +56,16 @@ static bool recorder_busy(void)
 static void enter_light_sleep(void)
 {
     if (recorder_busy() || inspiration_wifi_ready()) return;
-    // GPIO0 is also the ADC ladder for all three keys. Do not arm a
-    // level-sensitive wake while the line is already low; otherwise the
-    // chip can wake immediately and look as if it never slept.
-    if (gpio_get_level(POWER_BUTTON_GPIO) == 0) {
-        bsp_display_backlight(POWER_DIM_LEVEL);
-        s_stage = 1;
-        return;
-    }
-    // If Wi-Fi is still associating, close that window before sleeping so the
-    // radio is not left powered while the device is idle.
+    // The three keys share GPIO0 through an ADC ladder. A GPIO level wake on
+    // that same pin is not reliable: resistor tolerance and ADC noise can
+    // wake the ESP32-C3 and look like a phantom click. Use a deterministic
+    // screen-off idle state instead; the button component remains active and
+    // a debounced real gesture calls inspiration_power_note_activity().
     inspiration_wifi_end_upload_window();
     bsp_audio_suspend();
     bsp_display_backlight(0);
-
-    gpio_wakeup_enable(POWER_BUTTON_GPIO, GPIO_INTR_LOW_LEVEL);
-    esp_sleep_enable_gpio_wakeup();
-    ESP_LOGI(TAG, "进入轻睡眠，GPIO%d 任意按键唤醒", POWER_BUTTON_GPIO);
-    esp_light_sleep_start();
-    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
-    gpio_wakeup_disable(POWER_BUTTON_GPIO);
-    // A GPIO wake is not proof that a valid key gesture happened: the ADC
-    // ladder can briefly cross the low-level threshold. Stay dim until the
-    // debounced button callback confirms a real click or long press.
-    bsp_display_backlight(POWER_DIM_LEVEL);
-    s_stage = 1;
-    ESP_LOGI(TAG, "轻睡眠唤醒，等待按键确认");
+    s_stage = 2;
+    ESP_LOGI(TAG, "待机级别 3: 关闭背光、音频和 Wi-Fi，等待按键");
 }
 
 static void power_task(void *unused)
