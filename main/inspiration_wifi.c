@@ -21,6 +21,8 @@ static bool s_ready;
 static bool s_started;
 static bool s_sntp_started;
 static bool s_setup_starting;
+static bool s_setup_active;
+static char s_setup_ssid[33];
 static httpd_handle_t s_setup_server;
 
 static const char SETUP_PAGE[] =
@@ -78,6 +80,7 @@ static void setup_task(void *unused)
     esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     wifi_config_t ap = {0};
     snprintf((char *)ap.ap.ssid, sizeof(ap.ap.ssid), "Passport-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    snprintf(s_setup_ssid, sizeof(s_setup_ssid), "%s", (char *)ap.ap.ssid);
     snprintf((char *)ap.ap.password, sizeof(ap.ap.password), "inspireme");
     ap.ap.ssid_len = strlen((const char *)ap.ap.ssid);
     ap.ap.channel = 1;
@@ -93,6 +96,7 @@ static void setup_task(void *unused)
             httpd_uri_t save = {.uri = "/save", .method = HTTP_POST, .handler = setup_save_handler};
             httpd_register_uri_handler(s_setup_server, &page);
             httpd_register_uri_handler(s_setup_server, &save);
+            s_setup_active = true;
         }
     }
     s_setup_starting = false;
@@ -170,6 +174,8 @@ void inspiration_wifi_end_upload_window(void)
 }
 
 bool inspiration_wifi_ready(void) { return s_ready; }
+bool inspiration_wifi_setup_active(void) { return s_setup_active; }
+const char *inspiration_wifi_setup_ssid(void) { return s_setup_ssid; }
 
 void inspiration_wifi_begin_setup(void)
 {

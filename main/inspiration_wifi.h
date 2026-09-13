@@ -10,3 +10,5 @@ void inspiration_wifi_end_upload_window(void);
 bool inspiration_wifi_ready(void);
 // Long-press UP opens a temporary AP setup page; it never clears Passport data.
 void inspiration_wifi_begin_setup(void);
+bool inspiration_wifi_setup_active(void);
+const char *inspiration_wifi_setup_ssid(void);
