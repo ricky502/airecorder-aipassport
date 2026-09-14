@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "esp_event.h"
 #include "esp_http_server.h"
@@ -19,11 +21,13 @@
 #include "lwip/ip4_addr.h"
 #include "inspiration_config.h"
 #include "inspiration_upload.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 
 static bool s_ready;
 static bool s_started;
 static bool s_sntp_started;
+static esp_timer_handle_t s_clock_persist_timer;
 static bool s_setup_starting;
 static bool s_setup_active;
 static int64_t s_setup_started_us;
@@ -90,6 +94,54 @@ static esp_err_t setup_save_handler(httpd_req_t *request)
     return ESP_OK;
 }
 
+// ---------- Wall-clock persistence ----------
+// The C3 has no battery-backed RTC, so a power pull resets the clock to 1970
+// and the home screen showed --/-- until the next Wi-Fi window let SNTP run.
+// The wall time is therefore saved to NVS once an hour and right after every
+// SNTP sync, and restored at boot: worst case the clock resumes one hour
+// slow, and the next SNTP sync trims it to the second. An hourly NVS write
+// is ~9k cycles/year, far below the flash wear budget.
+#define CLOCK_NAMESPACE "clock"
+#define CLOCK_KEY "epoch"
+#define CLOCK_MIN_VALID_S 1704067200LL // 2024-01-01: older stamps are garbage
+
+static void save_clock_to_nvs(void)
+{
+    time_t now = time(NULL);
+    if (now < CLOCK_MIN_VALID_S) return;
+    nvs_handle_t nvs;
+    if (nvs_open(CLOCK_NAMESPACE, NVS_READWRITE, &nvs) != ESP_OK) return;
+    if (nvs_set_u32(nvs, CLOCK_KEY, (uint32_t)now) == ESP_OK) nvs_commit(nvs);
+    nvs_close(nvs);
+}
+
+static void restore_clock_from_nvs(void)
+{
+    nvs_handle_t nvs;
+    if (nvs_open(CLOCK_NAMESPACE, NVS_READONLY, &nvs) != ESP_OK) return;
+    uint32_t epoch = 0;
+    if (nvs_get_u32(nvs, CLOCK_KEY, &epoch) == ESP_OK && epoch > CLOCK_MIN_VALID_S) {
+        struct timeval tv = {.tv_sec = epoch, .tv_usec = 0};
+        settimeofday(&tv, NULL);
+        ESP_LOGI("inspiration_wifi", "断电重启：时钟恢复到上次保存的时间");
+    }
+    nvs_close(nvs);
+}
+
+static void on_clock_persist_timer(void *unused)
+{
+    (void)unused;
+    save_clock_to_nvs();
+}
+
+// Called by SNTP every time the wall time gets corrected over Wi-Fi.
+static void on_time_synced(struct timeval *tv)
+{
+    (void)tv;
+    save_clock_to_nvs();
+    ESP_LOGI("inspiration_wifi", "SNTP 校时完成，时间已存入闪存");
+}
+
 static void setup_task(void *unused)
 {
     (void)unused;
@@ -143,6 +195,7 @@ static void start_clock_sync(void)
     if (s_sntp_started) return;
     setenv("TZ", "CST-8", 1);
     tzset();
+    esp_sntp_set_time_sync_notification_cb(on_time_synced);
     esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "ntp.aliyun.com");
     esp_sntp_setservername(1, "pool.ntp.org");
@@ -175,6 +228,14 @@ esp_err_t inspiration_wifi_init(void)
         return err;
     }
     if (err != ESP_OK) return err;
+    // Resume the wall clock from the last saved epoch before anything draws
+    // the home screen, so a power pull no longer blanks the clock.
+    restore_clock_from_nvs();
+    const esp_timer_create_args_t persist_args = {
+        .callback = on_clock_persist_timer, .name = "clock_persist"};
+    if (esp_timer_create(&persist_args, &s_clock_persist_timer) == ESP_OK) {
+        esp_timer_start_periodic(s_clock_persist_timer, 3600ULL * 1000000ULL);
+    }
     err = esp_netif_init();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return err;
     err = esp_event_loop_create_default();
