@@ -214,11 +214,16 @@ NAMES_HINT = f"录音所属团队的人名表：{NAMES}。转写稿里的谐音�
 LLM_SYS = (
     "你是录音整理助手。先判断这条录音的意图类型，再按对应模板整理成飞书 markdown。"
     "只输出一个严格 JSON 对象，不要 markdown 围栏，格式：\n"
-    '{"type":"meeting|idea|memo","title":"主题(10字内)","body":"正文markdown"}\n\n'
+    '{"type":"meeting|idea|memo","title":"主题(10字内)","body":"正文markdown",'
+    '"article_worthy":true|false}\n\n'
     "类型判断（录音开头明说的暗号优先，其次按内容性质）：\n"
     '- 说了「会议」「开会」「碰一下」「讨论一下」，或内容是与他人讨论工作事项 → "meeting"\n'
     '- 说了「灵感」「点子」「想法」「记个创意」，或内容是一个创意/念头 → "idea"\n'
     '- 都不像 → "memo"\n\n'
+    "article_worthy（仅 type=idea 需要判断）：这条灵感够不够格写成一篇公众号文章？"
+    "四条全过才 true：①有具体的人/事/矛盾或反常识观点，不是飘着的感慨；"
+    "②读者有共鸣点或干货点；③当下内容能展开 800 字以上不用现编；"
+    "④不需要再采访或查大量资料就能动笔。差一点火候也照常输出 idea，但 article_worthy=false。\n\n"
     "各类型 body 的结构要求（用 ## 小节标题）：\n"
     "- meeting: ## 要点（3-6条，保留人名/数字/结论）；## 结论；## 待办（每条格式「事项 — 负责人/期限」，没提就写「无」）\n"
     "- idea: ## 一句话（这个点子是什么）；## 想法本身（展开，保留原话里生动的表达）；## 为什么有价值；## 下一步（最小验证动作，没想好写「待想」）\n"
@@ -227,7 +232,7 @@ LLM_SYS = (
 )
 
 
-def parse_intent(raw: str) -> tuple[str, str, str]:
+def parse_intent(raw: str) -> tuple[str, str, str, bool]:
     start, end = raw.find("{"), raw.rfind("}")
     if 0 <= start < end:
         try:
@@ -235,11 +240,12 @@ def parse_intent(raw: str) -> tuple[str, str, str]:
             kind = result.get("type", "memo")
             kind = kind if kind in TEMPLATES else "memo"
             title, body = (result.get("title") or "").strip(), (result.get("body") or "").strip()
+            worthy = bool(result.get("article_worthy")) if kind == "idea" else False
             if body:
-                return kind, title, body
+                return kind, title, body, worthy
         except (json.JSONDecodeError, TypeError):
             pass
-    return "memo", "", raw.strip()
+    return "memo", "", raw.strip(), False
 
 
 def process_text(text: str) -> tuple[str, str, str]:
@@ -257,6 +263,46 @@ def process_text(text: str) -> tuple[str, str, str]:
     with urllib.request.urlopen(request, timeout=180) as response:
         result = json.loads(response.read())
     return parse_intent("".join(item.get("text", "") for item in result.get("content", [])))
+
+
+def save_to_obsidian(recording_id: str, source: str, title: str, body: str,
+                     transcript: str, worthy: bool) -> Path | None:
+    """灵感卡片落进 Obsidian 写作灵感库（0914 老板令）。
+
+    够文章标准的进「灵感卡片」，火候不够的进「灵感卡片/待定」——都不丢。
+    返回入库路径；任何失败只记日志，不影响录音主流程。
+    """
+    try:
+        vault = Path(os.environ.get("AI_REC_OBSIDIAN_VAULT", Path.home() / "Documents" / "写作灵感库"))
+        folder = vault / "灵感卡片" / ("" if worthy else "待定")
+        folder.mkdir(parents=True, exist_ok=True)
+        safe = "".join(c for c in (title or "未命名灵感")
+                       if c not in '\\/:*?"<>|\n\t').strip() or "未命名灵感"
+        stamp = time.strftime("%Y%m%d-%H%M")
+        path = folder / f"{stamp} {safe[:40]}.md"
+        counter = 1
+        while path.exists():
+            path = folder / f"{stamp}-{counter} {safe[:40]}.md"
+            counter += 1
+        status = "成文候选" if worthy else "待定"
+        path.write_text(
+            "---\n"
+            f"创建: {time.strftime('%Y-%m-%d %H:%M')}\n"
+            f"来源: {source} 录音卡\n"
+            f"录音: {recording_id}\n"
+            f"状态: {status}\n"
+            "标签: [灵感卡片]\n"
+            "---\n\n"
+            f"# {title or '未命名灵感'}\n\n"
+            f"{body}\n\n"
+            "## 原始转写（节选）\n\n"
+            f"{transcript[:800]}{'…' if len(transcript) > 800 else ''}\n",
+            encoding="utf-8")
+        log(f"obsidian saved: {path} (worthy={worthy})")
+        return path
+    except Exception as error:
+        log(f"obsidian save failed: {error}")
+        return None
 
 
 def send_lark(markdown: str) -> bool:
@@ -309,13 +355,19 @@ def pipeline(wav_path: Path) -> None:
         transcript = transcribe_long(wav_path)
         log(f"ASR done {time.time() - started:.1f}s: {transcript[:80]}")
         if transcript.strip():
-            kind, title, summary = process_text(transcript)
+            kind, title, summary, worthy = process_text(transcript)
         else:
-            kind, title, summary = "memo", "", "**转写为空**（可能是静音或麦克风问题）"
+            kind, title, summary, worthy = "memo", "", "**转写为空**（可能是静音或麦克风问题）", False
+        saved_path = None
+        if kind == "idea":
+            source = "ai-passport" if tag.startswith("passport-") else "cardputer"
+            saved_path = save_to_obsidian(Path(tag).stem, source, title, summary, transcript, worthy)
         emoji, label = TEMPLATES[kind]
         header = f"{emoji} **{label} · {title}** · {tag}" if title else f"{emoji} **{label}** · {tag}"
         markdown = (f"{header}\n\n{summary}\n\n<details>原始转写：{transcript[:500]}</details>\n"
                     f"<font color='grey'>时长约 {wav_duration_seconds(wav_path)}s · 音频: {wav_path}</font>")
+        if saved_path:
+            markdown += f"\n\n💾 灵感已存入 Obsidian 写作灵感库：{saved_path}"
         event = {
             "schema": 1,
             "event": "recording.ready",
