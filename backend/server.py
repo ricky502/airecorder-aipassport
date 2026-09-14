@@ -405,18 +405,25 @@ def decode_adpcm_packet(packet: bytes) -> bytes:
 
 
 def decode_adpcm_stream(payload: bytes) -> bytes:
-    """Decode a stored chunk containing concatenated ADPCM packets."""
+    """Decode a stored chunk containing concatenated ADPCM packets.
+
+    A hard reset mid-write can leave the final packet half-flushed on the
+    card.  Salvage every complete packet and drop only the trailing fragment
+    instead of discarding the whole recording.
+    """
     pcm = bytearray()
     offset = 0
     while offset < len(payload):
         if len(payload) - offset < 8:
-            raise ValueError("ADPCM stream has a truncated packet header")
+            break  # trailing fragment: fewer bytes than a packet header
         sample_count = struct.unpack_from("<I", payload, offset + 4)[0]
         packet_bytes = 8 + sample_count // 2
         if sample_count == 0 or offset + packet_bytes > len(payload):
-            raise ValueError("ADPCM stream has a truncated packet")
+            break  # trailing fragment: header present but body cut short
         pcm.extend(decode_adpcm_packet(payload[offset:offset + packet_bytes]))
         offset += packet_bytes
+    if not pcm:
+        raise ValueError("ADPCM stream has no complete packet")
     return bytes(pcm)
 
 
@@ -431,12 +438,23 @@ def passport_to_wav(session_dir: Path, recording_id: str) -> Path:
         raise ValueError("session has no audio chunks")
     target = INBOX / f"passport-{recording_id}.wav"
     temp = target.with_suffix(".wav.part")
+    dropped = []
     with wave.open(str(temp), "wb") as output:
         output.setnchannels(1)
         output.setsampwidth(2)
         output.setframerate(8000)
         for chunk in chunks:
-            output.writeframes(decode_adpcm_stream(chunk.read_bytes()))
+            try:
+                output.writeframes(decode_adpcm_stream(chunk.read_bytes()))
+            except ValueError:
+                # One unreadable chunk must not sink the session; skip it and
+                # keep every decodable minute of the recording.
+                dropped.append(chunk.name)
+    if len(dropped) == len(chunks):
+        temp.unlink(missing_ok=True)
+        raise ValueError("no decodable audio chunk in session")
+    if dropped:
+        log(f"passport {recording_id}: skipped undecodable chunks {','.join(dropped)}")
     temp.replace(target)
     return target
 
