@@ -105,6 +105,10 @@ static esp_err_t setup_save_handler(httpd_req_t *request)
 #define CLOCK_KEY "epoch"
 #define CLOCK_MIN_VALID_S 1704067200LL // 2024-01-01: older stamps are garbage
 
+static void save_clock_to_nvs(void);
+static volatile bool s_time_synced_recently;
+static bool s_time_sync_owns_window;
+
 static void save_clock_to_nvs(void)
 {
     time_t now = time(NULL);
@@ -138,8 +142,46 @@ static void on_clock_persist_timer(void *unused)
 static void on_time_synced(struct timeval *tv)
 {
     (void)tv;
+    s_time_synced_recently = true;
     save_clock_to_nvs();
     ESP_LOGI("inspiration_wifi", "SNTP 校时完成，时间已存入闪存");
+}
+
+// Power-on: connect once so SNTP can fix the clock restored from NVS. The
+// restored stamp is the time of the last save before power was pulled, so
+// without this a card that sat unplugged for hours would show a stale wall
+// time until the user happened to record something. We open the same upload
+// window the uploader uses, but only close a window we opened ourselves:
+// if the uploader is already uploading, its own flow closes the radio.
+static void time_sync_task(void *unused)
+{
+    (void)unused;
+    vTaskDelay(pdMS_TO_TICKS(3000)); // let the boot and UI settle first
+    s_time_synced_recently = false;
+    // Two tries: the first NTP exchange can fail right after boot while the
+    // network stack is still settling.
+    for (int attempt = 0; attempt < 2 && !s_time_synced_recently; attempt++) {
+        if (!s_started && inspiration_wifi_begin_upload_window() == ESP_OK) {
+            s_time_sync_owns_window = true;
+        }
+        // SNTP needs association plus one NTP round trip; 30 s is generous.
+        for (int i = 0; i < 300 && !s_time_synced_recently; i++) {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        if (s_time_sync_owns_window) {
+            inspiration_wifi_end_upload_window();
+            s_time_sync_owns_window = false;
+        }
+        if (!s_time_synced_recently && attempt == 0) vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+    vTaskDelete(NULL);
+}
+
+void inspiration_wifi_sync_time_at_boot(void)
+{
+    if (xTaskCreate(time_sync_task, "passport_time", 3072, NULL, 3, NULL) != pdPASS) {
+        ESP_LOGW("inspiration_wifi", "开机校时任务创建失败");
+    }
 }
 
 static void setup_task(void *unused)
@@ -258,6 +300,8 @@ esp_err_t inspiration_wifi_init(void)
     if (err != ESP_OK) return err;
     err = esp_wifi_set_storage(WIFI_STORAGE_FLASH);
     if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_STA);
+    // One Wi-Fi window per power-on purely for the clock (0914 老板令).
+    if (err == ESP_OK) inspiration_wifi_sync_time_at_boot();
     return err;
 }
 
