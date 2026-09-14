@@ -10,6 +10,11 @@ void inspiration_wifi_end_upload_window(void);
 bool inspiration_wifi_ready(void);
 // Long-press UP opens a temporary AP setup page; it never clears Passport data.
 void inspiration_wifi_begin_setup(void);
+// Leaves the setup AP (long-press UP again, or the 3-minute timeout) so the
+// recorder can resume uploading. Calling this with no setup running is a no-op.
+void inspiration_wifi_end_setup(void);
+// Drives the setup auto-timeout; safe to call from the UI tick.
+void inspiration_wifi_setup_poll(void);
 bool inspiration_wifi_setup_active(void);
 const char *inspiration_wifi_setup_ssid(void);
 const char *inspiration_wifi_setup_password(void);

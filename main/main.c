@@ -29,7 +29,11 @@ static void key_task(void *unused)
         }
         if (handled) continue;
         if (key.button == BSP_BTN_UP && key.event == BSP_BTN_LONG) {
-            inspiration_wifi_begin_setup();
+            // Long-press UP toggles the Wi-Fi setup AP: enter pairing when
+            // idle, leave it when the PAIR screen is up. Without the exit
+            // gesture the card could stay stuck in PAIR until a reboot.
+            if (inspiration_wifi_setup_active()) inspiration_wifi_end_setup();
+            else inspiration_wifi_begin_setup();
             continue;
         }
         // OK is intentionally long-press only on the home screen. A short

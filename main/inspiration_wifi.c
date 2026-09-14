@@ -8,6 +8,7 @@
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_timer.h"
 #include "mdns.h"
 #include "esp_netif.h"
 #include "esp_sntp.h"
@@ -25,10 +26,14 @@ static bool s_started;
 static bool s_sntp_started;
 static bool s_setup_starting;
 static bool s_setup_active;
+static int64_t s_setup_started_us;
 static char s_setup_ssid[33];
 static httpd_handle_t s_setup_server;
 static esp_netif_t *s_setup_netif;
 #define SETUP_AP_PASSWORD "inspireme"
+// A phone left connected to the setup AP must not pin the card in PAIR mode
+// forever: after three minutes the card exits on its own and resumes uploads.
+#define SETUP_TIMEOUT_US (180LL * 1000000LL)
 
 static const char SETUP_PAGE[] =
     "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -126,6 +131,7 @@ static void setup_task(void *unused)
             httpd_register_uri_handler(s_setup_server, &probe2);
             httpd_register_uri_handler(s_setup_server, &probe3);
             s_setup_active = true;
+            s_setup_started_us = esp_timer_get_time();
         }
     }
     s_setup_starting = false;
@@ -231,4 +237,29 @@ void inspiration_wifi_begin_setup(void)
     if (s_setup_starting || s_setup_server) return;
     s_setup_starting = true;
     if (xTaskCreate(setup_task, "passport_setup", 4096, NULL, 3, NULL) != pdPASS) s_setup_starting = false;
+}
+
+// setup_task has already deleted itself by the time s_setup_active is set, so
+// tearing down here cannot race it.
+void inspiration_wifi_end_setup(void)
+{
+    if (!s_setup_active) return;
+    if (s_setup_server) {
+        httpd_stop(s_setup_server);
+        s_setup_server = NULL;
+    }
+    if (s_started) inspiration_wifi_end_upload_window();
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    s_setup_active = false;
+    s_setup_started_us = 0;
+    s_setup_ssid[0] = '\0';
+    ESP_LOGI("inspiration_wifi", "配网模式退出，恢复待机");
+}
+
+void inspiration_wifi_setup_poll(void)
+{
+    if (!s_setup_active || !s_setup_started_us) return;
+    if (esp_timer_get_time() - s_setup_started_us < SETUP_TIMEOUT_US) return;
+    ESP_LOGI("inspiration_wifi", "配网 3 分钟无操作，自动退出");
+    inspiration_wifi_end_setup();
 }

@@ -57,6 +57,21 @@ static void refresh_library(void)
 {
     s_library_count = 0;
     inspiration_storage_for_each_chunk(collect_library_chunk, NULL);
+    // SPIFFS can keep ghost directory entries after a power loss, which made
+    // one clip render twice. Keep the first entry per sequence.
+    for (size_t i = 0; i < s_library_count; i++) {
+        for (size_t j = i + 1; j < s_library_count;) {
+            if (s_library_chunks[j] == s_library_chunks[i]) {
+                for (size_t k = j + 1; k < s_library_count; k++) {
+                    s_library_chunks[k - 1] = s_library_chunks[k];
+                    s_library_bytes[k - 1] = s_library_bytes[k];
+                }
+                s_library_count--;
+            } else {
+                j++;
+            }
+        }
+    }
     for (size_t i = 0; i < s_library_count; i++) {
         for (size_t j = i + 1; j < s_library_count; j++) {
             if (s_library_chunks[j] < s_library_chunks[i]) {
@@ -171,10 +186,14 @@ static void tick(lv_timer_t *timer)
     // READY means an HTTP upload is actively in progress.  Wi-Fi association
     // and mDNS retries remain invisible so the footer does not flicker.
     inspiration_recorder_set_wifi_ready(inspiration_recorder_upload_active());
+    // Drives the 3-minute setup timeout; must run even while the PAIR screen
+    // is showing, otherwise a forgotten card would never leave pairing.
+    inspiration_wifi_setup_poll();
     if (inspiration_wifi_setup_active()) {
         lv_label_set_text(s_top, "PAIR 192.168.4.1");
         lv_label_set_text_fmt(s_status, "JOIN AP: %s", inspiration_wifi_setup_ssid());
-        lv_label_set_text_fmt(s_footer, "PWD: %s", inspiration_wifi_setup_password());
+        lv_label_set_text_fmt(s_footer, "PWD: %s  HOLD " LV_SYMBOL_LEFT " EXIT",
+                              inspiration_wifi_setup_password());
         lv_obj_add_flag(s_cache, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_text_color(s_status, lv_color_hex(AMBER), 0);
         for (int i = 0; i < 12; i++) lv_obj_add_flag(s_meter[i], LV_OBJ_FLAG_HIDDEN);
